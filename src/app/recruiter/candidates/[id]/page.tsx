@@ -2,6 +2,7 @@
 
 import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useAuth } from '@/context/auth-context';
 import { calculateCompetencyProfile } from '@/lib/competency/scoring';
 import { matchCandidateToRoles } from '@/lib/matching/role-matcher';
 import { CandidateProfile } from '@/types/user';
@@ -14,6 +15,7 @@ export default function RecruiterCandidateDetailPage({
 }) {
   const unwrappedParams = use(params);
   const candidateId = unwrappedParams.id;
+  const { idToken } = useAuth();
 
   const [candidate, setCandidate] = useState<CandidateProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -22,7 +24,10 @@ export default function RecruiterCandidateDetailPage({
   useEffect(() => {
     async function fetchCandidate() {
       try {
-        const res = await fetch(`/api/candidate/profile?candidateId=${encodeURIComponent(candidateId)}`);
+        const headers: Record<string, string> = {};
+        if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
+
+        const res = await fetch(`/api/candidate/profile?candidateId=${encodeURIComponent(candidateId)}`, { headers });
         if (!res.ok) {
           throw new Error(`Failed to load candidate (HTTP ${res.status})`);
         }
@@ -39,7 +44,7 @@ export default function RecruiterCandidateDetailPage({
       }
     }
     fetchCandidate();
-  }, [candidateId]);
+  }, [candidateId, idToken]);
 
   if (loading) {
     return (

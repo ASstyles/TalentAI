@@ -50,17 +50,53 @@ function LoginFormContent() {
         // Recruiter logging in through candidate portal - offer quick switch
         setWrongRoleNotice({ detectedRole: 'recruiter', intendedRole: 'candidate' });
       } else {
+        const cleanRedirect =
+          redirectParam &&
+          redirectParam.startsWith('/') &&
+          !redirectParam.startsWith('//') &&
+          !redirectParam.startsWith('/login') &&
+          !redirectParam.startsWith('/register')
+            ? redirectParam
+            : null;
+
         const destination =
-          redirectParam ||
+          cleanRedirect ||
           (role === 'admin'
             ? '/admin/dashboard'
             : role === 'recruiter'
             ? '/recruiter/dashboard'
             : '/candidate/dashboard');
-        router.push(destination);
+
+        router.replace(destination);
       }
     }
   }, [user, role, authLoading, roleParam, redirectParam, router, wrongRoleNotice]);
+
+  // If already authenticated with eligible role, prevent login form render and show smooth redirect state
+  if (!authLoading && user && role && !wrongRoleNotice) {
+    const isMatchingRole = !roleParam || roleParam === role || (role === 'admin');
+    if (isMatchingRole) {
+      return (
+        <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center px-4">
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-8 text-center max-w-sm space-y-4 shadow-2xl backdrop-blur-md">
+            <div className="h-10 w-10 mx-auto rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+              <CheckCircle2 className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">Active Session Detected</h3>
+              <p className="text-xs text-slate-400 mt-1">
+                You are signed in as <strong className="text-white">{user.displayName || user.email}</strong> ({role}).
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-2 text-xs text-indigo-400 font-medium">
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-indigo-400 border-t-transparent" />
+              <span>Redirecting to your workspace...</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

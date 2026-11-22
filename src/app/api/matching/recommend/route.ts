@@ -114,16 +114,22 @@ export async function POST(req: NextRequest) {
 
     // 5. Extracted Resume Skills
     let extractedSkills: ExtractedSkill[] = [];
+    if (profileDoc && (profileDoc as any).extractedSkills && Array.isArray((profileDoc as any).extractedSkills)) {
+      extractedSkills = (profileDoc as any).extractedSkills;
+    }
+
     try {
-      const snap = await adminDb
-        .collection('resumes')
-        .where('candidateId', '==', targetCandidateId)
-        .limit(1)
-        .get();
-      if (!snap.empty) {
-        const resumeData = snap.docs[0].data();
-        if (resumeData.extractedSkills) {
-          extractedSkills = resumeData.extractedSkills;
+      if (extractedSkills.length === 0) {
+        const snap = await adminDb
+          .collection('resumes')
+          .where('candidateId', '==', targetCandidateId)
+          .limit(1)
+          .get();
+        if (!snap.empty) {
+          const resumeData = snap.docs[0].data();
+          if (resumeData.extractedSkills) {
+            extractedSkills = resumeData.extractedSkills;
+          }
         }
       }
     } catch {
@@ -144,11 +150,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Synthesize multi-source verified competency profile
+    const claimedSkills =
+      profileDoc && (profileDoc as any).claimedSkills && Array.isArray((profileDoc as any).claimedSkills)
+        ? (profileDoc as any).claimedSkills
+        : profileDoc?.yearsOfExperience
+        ? ['Distributed Systems', 'TypeScript', 'Cloud Architecture']
+        : [];
+
     const profile = calculateCompetencyProfile({
       candidateId: targetCandidateId,
-      claimedSkills: profileDoc?.yearsOfExperience
-        ? ['Distributed Systems', 'TypeScript', 'Cloud Architecture']
-        : [],
+      claimedSkills,
       extractedSkills,
       verifiedRecords,
       codingSubmissions,

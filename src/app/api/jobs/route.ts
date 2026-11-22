@@ -52,20 +52,46 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const { searchParams } = new URL(req.url);
+    const search = searchParams.get('search') || undefined;
+    const seniority = searchParams.get('seniority') || undefined;
+    const specialization = searchParams.get('specialization') || undefined;
+    const locationType = (searchParams.get('locationType') as 'remote' | 'hybrid' | 'onsite') || undefined;
+    const sort = (searchParams.get('sort') as 'newest' | 'salary') || undefined;
+
     if (userRole === 'admin') {
-      const allJobs = await JobService.getJobs();
+      const allJobs = await JobService.getJobs({
+        search,
+        seniority,
+        specialization,
+        locationType,
+        sort,
+      });
       return NextResponse.json({ success: true, data: allJobs });
     }
 
     if (userRole === 'recruiter' && userOrgId) {
       // Recruiter sees published jobs plus their organization's internal/draft jobs
-      const allJobs = await JobService.getJobs();
+      const allJobs = await JobService.getJobs({
+        search,
+        seniority,
+        specialization,
+        locationType,
+        sort,
+      });
       const filtered = allJobs.filter((j) => j.status === 'published' || j.orgId === userOrgId);
       return NextResponse.json({ success: true, data: filtered });
     }
 
     // Public / Candidate view: ONLY published jobs are discoverable
-    const publishedJobs = await JobService.getJobs({ status: 'published' });
+    const publishedJobs = await JobService.getJobs({
+      status: 'published',
+      search,
+      seniority,
+      specialization,
+      locationType,
+      sort,
+    });
     return NextResponse.json({ success: true, data: publishedJobs });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
