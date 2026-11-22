@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { adminDb } from '@/lib/firebase/admin';
 import { AuditRepository } from '@/lib/repositories/audit-repository';
+import { rateLimiter } from '@/lib/rate-limit/redis-limiter';
 
 // Block public free webmail providers to enforce genuine corporate work emails
 const BLOCKED_DOMAINS = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'aol.com', 'mail.com'];
@@ -28,6 +29,19 @@ const AccessRequestSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown-ip';
+    const rateCheck = await rateLimiter.checkRateLimit('recruiter_access_request', clientIp);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded: Too many access requests submitted. Please try again later.' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(Math.max(1, rateCheck.resetTime - Math.floor(Date.now() / 1000))),
+          },
+        }
+      );
+    }
     const body = await req.json();
     const parsed = AccessRequestSchema.safeParse(body);
 

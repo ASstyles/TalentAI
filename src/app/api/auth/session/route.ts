@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyServerSession, setUserRole } from '@/lib/firebase/auth';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { verifyIdTokenSession, verifyCookieSession, setUserRole, DecodedSession } from '@/lib/firebase/auth';
+import { adminAuth } from '@/lib/firebase/admin';
 import { UserRepository } from '@/lib/repositories/user-repository';
 import { CandidateRepository } from '@/lib/repositories/candidate-repository';
 
@@ -14,20 +14,23 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
         idToken = body.idToken || null;
       } catch {
-        // Fallback to cookie
+        // Fallback to cookie check
       }
     }
 
-    if (!idToken) {
-      idToken = req.cookies.get('session')?.value || null;
-    }
+    const sessionCookie = req.cookies.get('session')?.value || null;
 
-    if (!idToken) {
+    if (!idToken && !sessionCookie) {
       return NextResponse.json({ error: 'Missing authentication token' }, { status: 401 });
     }
 
-    // Cryptographic token verification with revocation check
-    const session = await verifyServerSession(idToken);
+    // Cryptographic verification: verify ID token if provided; otherwise verify session cookie
+    let session: DecodedSession;
+    if (idToken) {
+      session = await verifyIdTokenSession(idToken);
+    } else {
+      session = await verifyCookieSession(sessionCookie!);
+    }
 
     // Retrieve user record from Firestore
     let userDoc = await UserRepository.getById(session.uid);
@@ -74,14 +77,24 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Set secure HTTP-only session cookie
-    response.cookies.set('session', idToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 60 * 60 * 24 * 7, // 7 days
-    });
+    // Generate genuine Firebase Session Cookie if ID token was supplied
+    if (idToken) {
+      const expiresInMs = 60 * 60 * 24 * 7 * 1000; // 7 days
+      let cookieValue = idToken;
+      try {
+        cookieValue = await adminAuth.createSessionCookie(idToken, { expiresIn: expiresInMs });
+      } catch {
+        // In local/emulator tests, retain idToken if createSessionCookie is not supported
+      }
+
+      response.cookies.set('session', cookieValue, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 60 * 60 * 24 * 7,
+      });
+    }
 
     return response;
   } catch (err: unknown) {

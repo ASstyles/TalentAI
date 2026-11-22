@@ -2,11 +2,26 @@ import { NextRequest, NextResponse } from 'next/server';
 import { parseResumeWithGemini } from '@/lib/gemini/services/resume-analysis';
 import { GeminiClient } from '@/lib/gemini/client';
 import { authorizeRequest } from '@/lib/firebase/auth';
+import { rateLimiter } from '@/lib/rate-limit/redis-limiter';
 
 export async function POST(req: NextRequest) {
   try {
     // Authenticate caller (candidates, recruiters, or admins)
-    await authorizeRequest(req, ['candidate', 'recruiter', 'admin']);
+    const session = await authorizeRequest(req, ['candidate', 'recruiter', 'admin']);
+
+    // Distributed Rate Limiting
+    const rateCheck = await rateLimiter.checkRateLimit('resume_parse', session.uid);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded: Maximum 15 resume parses per minute. Please wait.' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(Math.max(1, rateCheck.resetTime - Math.floor(Date.now() / 1000))),
+          },
+        }
+      );
+    }
 
     const { rawText } = await req.json();
     if (!rawText || typeof rawText !== 'string' || rawText.trim().length === 0) {

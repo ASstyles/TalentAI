@@ -3,29 +3,8 @@ import { z } from 'zod';
 import { executeInIsolatedSandbox } from '@/lib/sandbox/runner';
 import { authorizeRequest } from '@/lib/firebase/auth';
 import { AssessmentRepository } from '@/lib/repositories/assessment-repository';
+import { rateLimiter } from '@/lib/rate-limit/redis-limiter';
 import { TestCase } from '@/types/coding';
-
-// In-memory sliding window rate limiter to prevent abuse and resource exhaustion
-const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
-const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
-const MAX_REQUESTS_PER_WINDOW = 10; // Max 10 runs per minute
-
-function checkRateLimit(identifier: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(identifier);
-
-  if (!entry || now > entry.resetTime) {
-    rateLimitMap.set(identifier, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
-    return true;
-  }
-
-  if (entry.count >= MAX_REQUESTS_PER_WINDOW) {
-    return false;
-  }
-
-  entry.count++;
-  return true;
-}
 
 const ExecuteSchema = z.object({
   code: z.string().min(1, 'Code cannot be empty').max(50000, 'Code exceeds 50KB limit'),
@@ -49,11 +28,17 @@ export async function POST(req: NextRequest) {
     // DEF-003 Remediation: Enforce authentication for sandbox execution
     const session = await authorizeRequest(req, ['candidate', 'recruiter', 'admin']);
 
-    // Rate limiting check per authenticated UID
-    if (!checkRateLimit(session.uid)) {
+    // Distributed Rate limiting check per authenticated UID
+    const rateCheck = await rateLimiter.checkRateLimit('sandbox_execute', session.uid);
+    if (!rateCheck.allowed) {
       return NextResponse.json(
         { error: 'Rate limit exceeded: Maximum 10 sandbox executions per minute. Please wait.' },
-        { status: 429 }
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(Math.max(1, rateCheck.resetTime - Math.floor(Date.now() / 1000))),
+          },
+        }
       );
     }
 
@@ -167,6 +152,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, data: summary });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('EXECUTION_PROVIDER_UNCONFIGURED')) {
+      return NextResponse.json(
+        {
+          success: false,
+          status: 'EXECUTION_PROVIDER_UNCONFIGURED',
+          error: message,
+          retryAvailable: false,
+        },
+        { status: 503 }
+      );
+    }
     const status = message.startsWith('Unauthorized')
       ? 401
       : message.startsWith('Forbidden')

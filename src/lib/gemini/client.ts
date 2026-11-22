@@ -25,11 +25,11 @@ export class GeminiServiceError extends Error {
 }
 
 /**
- * Robust singleton Gemini Client supporting configurable model tiers:
- * - Primary: GEMINI_MODEL_PRIMARY (gemini-4-neon)
- * - Reasoning: GEMINI_MODEL_REASONING (gemini-4-carbon)
- * - Fast: GEMINI_MODEL_FAST (gemini-4-hydrogen)
- * - Fallback: GEMINI_MODEL_FALLBACK (gemini-3.8-flash)
+ * Robust singleton Gemini Client supporting configurable official model tiers:
+ * - Primary: GEMINI_MODEL_PRIMARY (gemini-2.5-flash)
+ * - Reasoning: GEMINI_MODEL_REASONING (gemini-2.5-pro)
+ * - Fast: GEMINI_MODEL_FAST (gemini-2.0-flash)
+ * - Fallback: GEMINI_MODEL_FALLBACK (gemini-1.5-flash)
  */
 class GeminiClientService {
   private client: GoogleGenAI | null = null;
@@ -39,10 +39,10 @@ class GeminiClientService {
   public readonly fallbackModel: string;
 
   constructor() {
-    this.primaryModel = process.env.GEMINI_MODEL_PRIMARY || 'gemini-4-neon';
-    this.reasoningModel = process.env.GEMINI_MODEL_REASONING || 'gemini-4-carbon';
-    this.fastModel = process.env.GEMINI_MODEL_FAST || 'gemini-4-hydrogen';
-    this.fallbackModel = process.env.GEMINI_MODEL_FALLBACK || 'gemini-3.8-flash';
+    this.primaryModel = process.env.GEMINI_MODEL_PRIMARY || 'gemini-2.5-flash';
+    this.reasoningModel = process.env.GEMINI_MODEL_REASONING || 'gemini-2.5-pro';
+    this.fastModel = process.env.GEMINI_MODEL_FAST || 'gemini-2.0-flash';
+    this.fallbackModel = process.env.GEMINI_MODEL_FALLBACK || 'gemini-1.5-flash';
   }
 
   public getClient(): GoogleGenAI {

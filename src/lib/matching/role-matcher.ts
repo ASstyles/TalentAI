@@ -126,6 +126,25 @@ export const ROLE_BENCHMARKS: Record<EngineeringRole, RoleRubricRequirement[]> =
   ],
 };
 
+const SKILL_ALIASES: Record<string, string[]> = {
+  'react': ['react', 'react.js', 'reactjs'],
+  'nodejs': ['nodejs', 'node', 'node.js'],
+  'typescript': ['typescript', 'ts'],
+  'javascript': ['javascript', 'js'],
+  'databases': ['databases', 'database', 'sql', 'postgres', 'postgresql', 'mongodb', 'mongo', 'firestore', 'mysql'],
+  'cloud': ['cloud', 'aws', 'gcp', 'azure', 'cloud architecture'],
+  'ci/cd': ['ci/cd', 'cicd', 'github actions', 'jenkins', 'gitlab ci'],
+  'docker': ['docker', 'containers', 'containerization'],
+  'kubernetes': ['kubernetes', 'k8s'],
+  'python': ['python', 'py'],
+  'llms': ['llms', 'large language models', 'genai', 'generative ai', 'gpt'],
+  'system design': ['system design', 'systems architecture', 'architecture'],
+  'api design': ['api design', 'apis', 'rest', 'restful apis', 'graphql'],
+  'css': ['css', 'css3', 'styling', 'tailwind', 'sass', 'scss'],
+  'html': ['html', 'html5'],
+  'testing': ['testing', 'unit testing', 'vitest', 'jest', 'cypress', 'playwright'],
+};
+
 /**
  * Calculates evidence-grounded role compatibility against all 16 engineering positions.
  */
@@ -146,25 +165,21 @@ export function matchCandidateToRoles(
 
     for (const bench of benchmarks) {
       totalWeight += bench.weight;
-      // Search candidate competencies for match (fuzzy match or direct key)
+      // Search candidate competencies for match (fuzzy match, aliases, or direct key)
       const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
       const cleanBenchKey = normalize(bench.skill);
       let matchedCompetency = profile.competencies[bench.skill.toLowerCase()];
 
-      // Fallback: check normalized match and category aliases
+      // Fallback: check aliases and normalized match
       if (!matchedCompetency) {
+        const aliases = SKILL_ALIASES[bench.skill.toLowerCase()] || [];
         for (const [ckey, cval] of Object.entries(profile.competencies)) {
           const cleanCkey = normalize(ckey);
           if (
             cleanCkey === cleanBenchKey ||
             cleanCkey.includes(cleanBenchKey) ||
             cleanBenchKey.includes(cleanCkey) ||
-            (cleanBenchKey === 'databases' &&
-              (cleanCkey.includes('sql') ||
-                cleanCkey.includes('postgres') ||
-                cleanCkey.includes('db') ||
-                cleanCkey.includes('mongo') ||
-                cleanCkey.includes('firestore')))
+            aliases.some((alias) => normalize(alias) === cleanCkey || cleanCkey.includes(normalize(alias)))
           ) {
             matchedCompetency = cval;
             break;
@@ -172,7 +187,11 @@ export function matchCandidateToRoles(
         }
       }
 
-      const score = matchedCompetency ? matchedCompetency.demonstratedScore : 0;
+      const demonstrated = matchedCompetency ? matchedCompetency.demonstratedScore : 0;
+      const unverified = matchedCompetency
+        ? (matchedCompetency.sourceBreakdown.extractedScore || matchedCompetency.claimedScore || 0)
+        : 0;
+      const score = demonstrated > 0 ? demonstrated : unverified;
       const confidence = matchedCompetency ? matchedCompetency.confidence : 10;
 
       if (matchedCompetency && score > 0) {

@@ -1,0 +1,100 @@
+name: talentai-enterprise
+
+services:
+  # ============================================================================
+  # TalentAI Next.js 15 Standalone Enterprise Application
+  # ============================================================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: talentai:production
+    container_name: talentai-app
+    restart: unless-stopped
+    init: true
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - NEXT_TELEMETRY_DISABLED=1
+      # Distributed Rate Limiting via internal Redis service
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-talentai_redis_secret_2026}@redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-talentai_redis_secret_2026}
+      # Firebase Client Configuration (Browser-visible)
+      - NEXT_PUBLIC_FIREBASE_API_KEY=${NEXT_PUBLIC_FIREBASE_API_KEY}
+      - NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN}
+      - NEXT_PUBLIC_FIREBASE_PROJECT_ID=${NEXT_PUBLIC_FIREBASE_PROJECT_ID}
+      - NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET}
+      - NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID}
+      - NEXT_PUBLIC_FIREBASE_APP_ID=${NEXT_PUBLIC_FIREBASE_APP_ID}
+      - NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=${NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID}
+      # Firebase Admin SDK Server-Side Credentials
+      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
+      - FIREBASE_CLIENT_EMAIL=${FIREBASE_CLIENT_EMAIL}
+      - FIREBASE_PRIVATE_KEY=${FIREBASE_PRIVATE_KEY}
+      # Google Gemini AI Models
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL_PRIMARY=${GEMINI_MODEL_PRIMARY:-gemini-2.5-flash}
+      - GEMINI_MODEL_REASONING=${GEMINI_MODEL_REASONING:-gemini-2.5-pro}
+      - GEMINI_MODEL_FAST=${GEMINI_MODEL_FAST:-gemini-2.0-flash}
+      - GEMINI_MODEL_FALLBACK=${GEMINI_MODEL_FALLBACK:-gemini-1.5-flash}
+      # Isolated Sandbox Worker Endpoint (External Isolated MicroVM / Container)
+      - SANDBOX_WORKER_URL=${SANDBOX_WORKER_URL:-}
+      - SANDBOX_WORKER_SECRET=${SANDBOX_WORKER_SECRET:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - talentai-net
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2048M
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # ============================================================================
+  # Redis 7.4 Distributed Cache & Sliding-Window Rate Limiter
+  # Note: Dedicated internal network, password protected, NO exposed public port
+  # ============================================================================
+  redis:
+    image: redis:7.4-alpine
+    container_name: talentai-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-talentai_redis_secret_2026}
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy volatile-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      - talentai-net
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-talentai_redis_secret_2026}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
+networks:
+  talentai-net:
+    driver: bridge
+
+volumes:
+  redis-data:
+    driver: local

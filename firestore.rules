@@ -84,10 +84,11 @@ service cloud.firestore {
     }
 
     // 7. Resumes (Private candidate metadata)
+    // DEF-015 Remediation: Arbitrary recruiters cannot query candidate resumes directly via Client SDK.
+    // Recruiter resume access routes through server APIs validating active job applications.
     match /resumes/{resumeId} {
       allow read: if isAuthenticated() && (
         resource.data.candidateId == request.auth.uid ||
-        isRecruiter() ||
         isAdmin()
       );
       allow create: if isAuthenticated() && request.resource.data.candidateId == request.auth.uid;
@@ -101,7 +102,6 @@ service cloud.firestore {
     match /candidateProjects/{projectId} {
       allow read: if isAuthenticated() && (
         resource.data.candidateId == request.auth.uid ||
-        isRecruiter() ||
         isAdmin()
       );
       allow create, update, delete: if isAuthenticated() && (
@@ -115,7 +115,6 @@ service cloud.firestore {
     match /verifications/{verificationId} {
       allow read: if isAuthenticated() && (
         resource.data.candidateId == request.auth.uid ||
-        isRecruiter() ||
         isAdmin()
       );
       allow create, update, delete: if isAdmin(); // Server-side verification only
@@ -126,7 +125,6 @@ service cloud.firestore {
     match /interviews/{interviewId} {
       allow read: if isAuthenticated() && (
         resource.data.candidateId == request.auth.uid ||
-        isRecruiter() ||
         isAdmin()
       );
       allow create: if isRecruiter() || isAdmin();
@@ -154,7 +152,6 @@ service cloud.firestore {
     match /codingSubmissions/{submissionId} {
       allow read: if isAuthenticated() && (
         resource.data.candidateId == request.auth.uid ||
-        isRecruiter() ||
         isAdmin()
       );
       // Candidates cannot falsify their passedTests or execution score
@@ -172,7 +169,6 @@ service cloud.firestore {
     match /roleRecommendations/{recId} {
       allow read: if isAuthenticated() && (
         resource.data.candidateId == request.auth.uid ||
-        isRecruiter() ||
         isAdmin()
       );
       allow write: if isAdmin();
@@ -180,8 +176,12 @@ service cloud.firestore {
 
     // 14. Hiring Decisions & Recruiter Overrides
     // DEF-016 Remediation: Direct client writes strictly forbidden. All decisions must route through /api/hiring/decide via Admin SDK with atomic transaction and immutable audit log.
+    // Read access is strictly isolated by organization (recruiters only see decisions for their own org).
     match /hiringDecisions/{decisionId} {
-      allow read: if isAuthenticated() && (isRecruiter() || isAdmin());
+      allow read: if isAuthenticated() && (
+        (isRecruiter() && isSameOrg(resource.data.orgId)) ||
+        isAdmin()
+      );
       allow write: if false;
     }
 

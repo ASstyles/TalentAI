@@ -4,6 +4,7 @@ import { adminAuth } from '@/lib/firebase/admin';
 import { setUserRole } from '@/lib/firebase/auth';
 import { UserRepository } from '@/lib/repositories/user-repository';
 import { CandidateRepository } from '@/lib/repositories/candidate-repository';
+import { rateLimiter } from '@/lib/rate-limit/redis-limiter';
 
 // Password must be at least 8 chars with 1 upper, 1 lower, 1 digit, and 1 special symbol
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&_\-#])[A-Za-z\d@$!%*?&_\-#]{8,}$/;
@@ -29,6 +30,19 @@ const RegisterSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown-ip';
+    const rateCheck = await rateLimiter.checkRateLimit('auth_register', clientIp);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded: Too many registration attempts. Please try again later.' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(Math.max(1, rateCheck.resetTime - Math.floor(Date.now() / 1000))),
+          },
+        }
+      );
+    }
     const body = await req.json();
     const parsed = RegisterSchema.safeParse(body);
 
