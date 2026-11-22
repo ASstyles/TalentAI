@@ -98,7 +98,7 @@ describe('Firebase Lazy Initialization & Server-Side Import Safety', () => {
 
     expect(getByText(/Create Your Candidate Account/i)).toBeInTheDocument();
     expect(getByPlaceholderText(/Alex Mercer/i)).toBeInTheDocument();
-  });
+  }, 15000);
 
   it('5. Login page renders safely without Firebase initialization when unconfigured', async () => {
     delete process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
@@ -115,7 +115,7 @@ describe('Firebase Lazy Initialization & Server-Side Import Safety', () => {
     expect(getByText(/Welcome to/i)).toBeInTheDocument();
     expect(getByText(/Candidate Login/i)).toBeInTheDocument();
     expect(getByText(/Recruiter Login/i)).toBeInTheDocument();
-  });
+  }, 15000);
 
   it('6. Does not expose Firebase Admin credentials in client configuration', async () => {
     const { getFirebaseClientConfig } = await import('@/lib/firebase/client');

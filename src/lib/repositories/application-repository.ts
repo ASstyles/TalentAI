@@ -1,13 +1,14 @@
 import { BaseRepository } from './base';
 import { JobApplication, ApplicationStatus } from '@/types/application';
 import { MOCK_APPLICATIONS, isDemoFixturesEnabled } from '@/lib/data/mock-data';
+import type { Query, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
 const COLLECTION = 'jobApplications';
 
 export class ApplicationRepository extends BaseRepository {
   public static async getAll(filters?: { candidateId?: string; orgId?: string; jobId?: string }): Promise<JobApplication[]> {
     try {
-      let query: FirebaseFirestore.Query = this.db.collection(COLLECTION);
+      let query: Query = this.db.collection(COLLECTION);
       if (filters?.candidateId) {
         query = query.where('candidateId', '==', filters.candidateId);
       }
@@ -20,7 +21,7 @@ export class ApplicationRepository extends BaseRepository {
 
       const snap = await query.get();
       if (!snap.empty) {
-        return snap.docs.map((doc) => this.sanitizeDoc<JobApplication>(doc));
+        return snap.docs.map((doc: QueryDocumentSnapshot) => this.sanitizeDoc<JobApplication>(doc));
       }
     } catch {
       // In case of read failure, check demo fixtures

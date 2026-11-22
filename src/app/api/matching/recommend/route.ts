@@ -11,6 +11,7 @@ import { VerificationRecord } from '@/types/verification';
 import { InterviewQuestion } from '@/types/interview';
 import { CodingSubmission } from '@/types/coding';
 import { ExtractedSkill } from '@/types/resume';
+import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
 const RecommendSchema = z.object({
   candidateId: z.string().optional(),
@@ -53,7 +54,13 @@ export async function POST(req: NextRequest) {
         .where('candidateId', '==', targetCandidateId)
         .get();
       if (!snap.empty) {
-        verifiedRecords = snap.docs.map((d) => d.data() as VerificationRecord);
+        verifiedRecords = snap.docs.map(
+          (d: QueryDocumentSnapshot) =>
+            ({
+              id: d.id,
+              ...d.data(),
+            } as unknown as VerificationRecord)
+        );
       }
     } catch {
       // Fallback below
@@ -84,7 +91,13 @@ export async function POST(req: NextRequest) {
         .where('candidateId', '==', targetCandidateId)
         .get();
       if (!snap.empty) {
-        interviewQuestions = snap.docs.map((d) => d.data() as InterviewQuestion);
+        interviewQuestions = snap.docs.map(
+          (d: QueryDocumentSnapshot) =>
+            ({
+              id: d.id,
+              ...d.data(),
+            } as unknown as InterviewQuestion)
+        );
       }
     } catch {
       // Fallback below
