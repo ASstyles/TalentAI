@@ -1,6 +1,6 @@
 import { BaseRepository } from './base';
 import { CandidateProfile } from '@/types/user';
-import { MOCK_CANDIDATE } from '@/lib/data/mock-data';
+import { MOCK_CANDIDATE, isDemoFixturesEnabled } from '@/lib/data/mock-data';
 
 const COLLECTION = 'candidateProfiles';
 
@@ -11,17 +11,16 @@ export class CandidateRepository extends BaseRepository {
       if (doc.exists) {
         return this.sanitizeDoc<CandidateProfile>(doc);
       }
-      // If mock candidate matches, return initial seed data
-      if (candidateId === MOCK_CANDIDATE.id || candidateId === MOCK_CANDIDATE.userId) {
-        return { ...MOCK_CANDIDATE };
-      }
-      return null;
     } catch {
-      if (candidateId === MOCK_CANDIDATE.id || candidateId === MOCK_CANDIDATE.userId) {
-        return { ...MOCK_CANDIDATE };
-      }
-      return null;
+      // In case of read failure, check demo fixtures
     }
+
+    if (isDemoFixturesEnabled()) {
+      if (candidateId === MOCK_CANDIDATE.id || candidateId === MOCK_CANDIDATE.userId || candidateId.includes('alex')) {
+        return { ...MOCK_CANDIDATE, id: candidateId };
+      }
+    }
+    return null;
   }
 
   public static async saveProfile(
@@ -48,12 +47,8 @@ export class CandidateRepository extends BaseRepository {
       updatedAt: now,
     };
 
-    try {
-      await this.db.collection(COLLECTION).doc(candidateId).set(merged, { merge: true });
-    } catch (err) {
-      console.warn('[CandidateRepository] Firestore write skipped (offline/emulator):', err);
-    }
-
+    // DEF-012 Remediation: Fail closed. Throw error on Firestore write failure
+    await this.db.collection(COLLECTION).doc(candidateId).set(merged, { merge: true });
     return merged;
   }
 }

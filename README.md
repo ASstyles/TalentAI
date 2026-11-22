@@ -39,6 +39,7 @@
   - `JobRepository`: Requisition persistence with compound indexes.
   - `ApplicationRepository`: Application submission, status transitions, and duplicate prevention.
   - `CandidateRepository`: Profile sync and external profile verification.
+  - `AssessmentRepository`: Authoritative coding problem definitions, private evaluation test case isolation, and submission recording.
   - `HiringDecisionRepository`: Transactional hiring decision commitments.
   - `AuditRepository`: Tamper-evident, immutable audit trail.
 
@@ -81,7 +82,7 @@ npm ci
 ```bash
 npm test
 ```
-*Current test suite: 9 suites, 38/38 tests passing (100%).*
+*Current test suite: 9 suites, 43/43 tests passing (100%).*
 
 ### Running Production Build
 ```bash
@@ -103,4 +104,5 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 - [Production Deployment Guide](docs/DEPLOYMENT_GUIDE.md)
 - [Automated Test Results](docs/TEST_RESULTS.md)
 - [System Limitations](docs/REMAINING_LIMITATIONS.md)
+- [Final Defect Register](docs/FINAL_DEFECT_REGISTER.md)
 - [Final Engineering Report](docs/FINAL_ENGINEERING_REPORT.md)

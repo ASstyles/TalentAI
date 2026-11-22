@@ -5,3 +5,4 @@ export * from './candidate-repository';
 export * from './hiring-decision-repository';
 export * from './audit-repository';
 export * from './user-repository';
+export * from './assessment-repository';

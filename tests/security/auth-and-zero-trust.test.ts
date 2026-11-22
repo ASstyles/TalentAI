@@ -89,4 +89,64 @@ describe('Zero-Trust Authentication & Authorization Guardrails (DEF-001 & DEF-00
 
     spy.mockRestore();
   });
+
+  it('rejects candidate attempting to pass custom test cases to sandbox API (DEF-013)', async () => {
+    const { POST } = await import('@/app/api/sandbox/execute/route');
+    const admin = await import('@/lib/firebase/admin');
+    const spy = vi.spyOn(admin.adminAuth, 'verifyIdToken').mockResolvedValueOnce({
+      uid: 'cand-user-789',
+      role: 'candidate',
+      email: 'cand@test.com',
+    } as any);
+
+    const req = new NextRequest('http://localhost:3000/api/sandbox/execute', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        authorization: 'Bearer valid-candidate-token',
+      },
+      body: JSON.stringify({
+        code: 'function solution() { return true; }',
+        language: 'javascript',
+        customTestCases: [
+          { id: 'fake-tc', input: '1', expectedOutput: 'true' }
+        ],
+      }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.error).toContain('Candidates cannot supply custom evaluation test cases');
+
+    spy.mockRestore();
+  });
+
+  it('rejects candidate attempting to generate recommendations for a different candidate (DEF-014)', async () => {
+    const { POST } = await import('@/app/api/matching/recommend/route');
+    const admin = await import('@/lib/firebase/admin');
+    const spy = vi.spyOn(admin.adminAuth, 'verifyIdToken').mockResolvedValueOnce({
+      uid: 'cand-user-alice',
+      role: 'candidate',
+      email: 'alice@test.com',
+    } as any);
+
+    const req = new NextRequest('http://localhost:3000/api/matching/recommend', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        authorization: 'Bearer valid-candidate-token',
+      },
+      body: JSON.stringify({
+        candidateId: 'cand-user-bob',
+      }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.error).toContain('Forbidden: You cannot request role recommendations for another candidate');
+
+    spy.mockRestore();
+  });
 });

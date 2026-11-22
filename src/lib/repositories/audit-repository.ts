@@ -13,12 +13,8 @@ export class AuditRepository extends BaseRepository {
       timestamp,
     };
 
-    try {
-      await this.db.collection(COLLECTION).doc(id).set(log);
-    } catch (err) {
-      console.warn('[AuditRepository] Firestore write skipped (offline/emulator):', err);
-    }
-
+    // DEF-012: Fail closed. Do not swallow write exceptions.
+    await this.db.collection(COLLECTION).doc(id).set(log);
     return log;
   }
 
@@ -32,7 +28,7 @@ export class AuditRepository extends BaseRepository {
       // Handled by fallback
     }
 
-    // Default seed logs
+    // Default seed logs for inspection if collection is currently empty
     return [
       {
         id: 'aud-seed-1',

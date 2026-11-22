@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useParams } from 'next/navigation';
 import { MOCK_CODING_ASSESSMENT } from '@/lib/data/mock-data';
 import { Code2, Play, CheckCircle2, XCircle, Clock, Cpu } from 'lucide-react';
 import { SandboxExecutionSummary } from '@/lib/sandbox/runner';
@@ -12,6 +13,7 @@ const DEFAULT_CODE = `function solution(operations) {
 }`;
 
 export default function CodingAssessmentPage() {
+  const params = useParams();
   const [code, setCode] = useState(DEFAULT_CODE);
   const [running, setRunning] = useState(false);
   const [executionResult, setExecutionResult] = useState<SandboxExecutionSummary | null>(null);
@@ -21,13 +23,14 @@ export default function CodingAssessmentPage() {
     setRunning(true);
     setError(null);
     try {
+      const assessmentId = (params?.id as string) || MOCK_CODING_ASSESSMENT.id;
       const res = await fetch('/api/sandbox/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           code,
           language: 'javascript',
-          testCases: MOCK_CODING_ASSESSMENT.testCases,
+          assessmentId,
         }),
       });
       const data = await res.json();
@@ -79,8 +82,12 @@ export default function CodingAssessmentPage() {
                       {tc.isHidden ? 'Hidden Evaluation Case' : 'Sample Case'}
                     </span>
                   </div>
-                  <div className="mt-2 text-slate-300">Input: {tc.input}</div>
-                  <div className="text-emerald-400">Expected: {tc.expectedOutput}</div>
+                  <div className="mt-2 text-slate-300">
+                    Input: {tc.isHidden ? '[Authoritative Evaluation Suite — Hidden]' : tc.input}
+                  </div>
+                  <div className="text-emerald-400">
+                    Expected: {tc.isHidden ? '[Authoritative Expected Output — Hidden]' : tc.expectedOutput}
+                  </div>
                 </div>
               ))}
             </div>

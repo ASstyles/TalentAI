@@ -4,22 +4,24 @@
 
 - **Test Framework**: Vitest v3.2.7
 - **Total Test Suites**: 9 Suites
-- **Total Tests**: 38 Tests
-- **Passed**: 38 (100%)
+- **Total Tests**: 43 Tests
+- **Passed**: 43 (100%)
 - **Failed**: 0
-- **Duration**: 6.35s
+- **Duration**: ~6.8s
 
 ---
 
 ## 2. Test Suite Breakdown
 
 ### 2.1 Security & Authentication
-- `tests/security/auth-and-zero-trust.test.ts` (5 tests | PASSED)
+- `tests/security/auth-and-zero-trust.test.ts` (7 tests | PASSED)
   - Rejection of unauthenticated requests (fails closed)
   - Rejection of client role spoofing headers (`x-user-role`, `x-user-id`)
   - Fail-closed behavior on invalid/expired tokens
   - Role escalation blocking (candidate attempting recruiter endpoint)
   - Recruiter authorization with organization isolation
+  - Candidate custom test case rejection in sandbox API (DEF-013)
+  - Candidate cross-candidate recommendation query rejection (DEF-014)
 - `tests/security/sanitization.test.ts` (3 tests | PASSED)
   - Prompt injection neutralization (`<system>`, `[SYSTEM]`, `rm -rf /`)
   - XML structural tag encapsulation
@@ -38,11 +40,14 @@
   - Error classification (UNAUTHORIZED, RATE_LIMIT_EXCEEDED, MODEL_NOT_FOUND, TIMEOUT)
 
 ### 2.4 Persistence & Repositories
-- `tests/unit/persistence-repositories.test.ts` (4 tests | PASSED)
+- `tests/unit/persistence-repositories.test.ts` (7 tests | PASSED)
   - `JobRepository`: creation and retrieval
   - `ApplicationRepository`: duplicate application prevention
   - `CandidateRepository`: profile updates and persistence
   - `HiringDecisionRepository`: human recruiter decision recording and audit log creation
+  - `AssessmentRepository`: public metadata with stripped hidden test cases (DEF-013)
+  - `AssessmentRepository`: private evaluation suite retrieval (DEF-013)
+  - Fail-closed write rejection: repositories throw on Firestore write errors (DEF-012)
 
 ### 2.5 Competency & Taxonomy
 - `tests/unit/scoring.test.ts` (2 tests | PASSED)

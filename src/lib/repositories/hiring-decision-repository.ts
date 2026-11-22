@@ -1,6 +1,5 @@
 import { BaseRepository } from './base';
 import { RecruiterDecision } from '@/types/hiring';
-import { ApplicationRepository } from './application-repository';
 import { AuditRepository } from './audit-repository';
 
 const COLLECTION = 'hiringDecisions';
@@ -47,34 +46,12 @@ export class HiringDecisionRepository extends BaseRepository {
       timestamp,
     };
 
-    // 1. Transactional write in Firestore if available
-    try {
-      const decisionRef = this.db.collection(COLLECTION).doc(id);
-      const appRef = this.db.collection('jobApplications').doc(params.applicationId);
+    // DEF-006 & DEF-012: Enforce true atomic Firestore transaction. Fail closed on transaction error.
+    const decisionRef = this.db.collection(COLLECTION).doc(id);
+    const appRef = this.db.collection('jobApplications').doc(params.applicationId);
 
-      await this.db.runTransaction(async (transaction) => {
-        const appDoc = await transaction.get(appRef);
-        const nextStatus =
-          params.decision === 'advance_to_offer'
-            ? 'offered'
-            : params.decision === 'reject'
-            ? 'rejected'
-            : params.decision === 'schedule_panel'
-            ? 'interviewing'
-            : 'review';
-
-        transaction.set(decisionRef, record);
-        if (appDoc.exists) {
-          transaction.update(appRef, {
-            status: nextStatus,
-            hiringRecommendationId: id,
-            updatedAt: timestamp,
-          });
-        }
-      });
-    } catch (err) {
-      console.warn('[HiringDecisionRepository] Firestore transaction fallback:', err);
-      // Fallback local update
+    await this.db.runTransaction(async (transaction) => {
+      const appDoc = await transaction.get(appRef);
       const nextStatus =
         params.decision === 'advance_to_offer'
           ? 'offered'
@@ -83,8 +60,16 @@ export class HiringDecisionRepository extends BaseRepository {
           : params.decision === 'schedule_panel'
           ? 'interviewing'
           : 'review';
-      await ApplicationRepository.updateStatus(params.applicationId, nextStatus as any).catch(() => {});
-    }
+
+      transaction.set(decisionRef, record);
+      if (appDoc.exists) {
+        transaction.update(appRef, {
+          status: nextStatus,
+          hiringRecommendationId: id,
+          updatedAt: timestamp,
+        });
+      }
+    });
 
     // 2. Commit immutable audit log
     await AuditRepository.recordLog({

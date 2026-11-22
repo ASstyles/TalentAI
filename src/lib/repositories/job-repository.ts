@@ -1,6 +1,6 @@
 import { BaseRepository } from './base';
 import { JobOpening, JobStatus } from '@/types/job';
-import { MOCK_JOBS } from '@/lib/data/mock-data';
+import { MOCK_JOBS, isDemoFixturesEnabled } from '@/lib/data/mock-data';
 
 const COLLECTION = 'jobOpenings';
 
@@ -19,21 +19,19 @@ export class JobRepository extends BaseRepository {
       if (!snap.empty) {
         return snap.docs.map((doc) => this.sanitizeDoc<JobOpening>(doc));
       }
-
-      // If Firestore collection is empty in local dev, seed initial published jobs
-      return MOCK_JOBS.filter((j) => {
-        if (filters?.status && j.status !== filters.status) return false;
-        if (filters?.orgId && j.orgId !== filters.orgId) return false;
-        return true;
-      });
     } catch {
-      // Graceful fallback to mock jobs if Firestore offline in local mode
+      // In case of read failure, proceed to demo fixtures check
+    }
+
+    if (isDemoFixturesEnabled()) {
       return MOCK_JOBS.filter((j) => {
         if (filters?.status && j.status !== filters.status) return false;
         if (filters?.orgId && j.orgId !== filters.orgId) return false;
         return true;
       });
     }
+
+    return [];
   }
 
   public static async getById(id: string): Promise<JobOpening | null> {
@@ -42,10 +40,14 @@ export class JobRepository extends BaseRepository {
       if (doc.exists) {
         return this.sanitizeDoc<JobOpening>(doc);
       }
-      return MOCK_JOBS.find((j) => j.id === id) || null;
     } catch {
+      // Handled below
+    }
+
+    if (isDemoFixturesEnabled()) {
       return MOCK_JOBS.find((j) => j.id === id) || null;
     }
+    return null;
   }
 
   public static async create(jobData: Omit<JobOpening, 'id' | 'createdAt' | 'updatedAt'>): Promise<JobOpening> {
@@ -58,31 +60,19 @@ export class JobRepository extends BaseRepository {
       updatedAt: now,
     };
 
-    try {
-      await this.db.collection(COLLECTION).doc(id).set(newJob);
-    } catch (err) {
-      console.warn('[JobRepository] Firestore write skipped (offline/emulator):', err);
-    }
-
+    // DEF-012 Remediation: Fail closed. Throw error on Firestore write failure
+    await this.db.collection(COLLECTION).doc(id).set(newJob);
     return newJob;
   }
 
   public static async updateStatus(id: string, status: JobStatus): Promise<JobOpening> {
     const now = new Date().toISOString();
-    try {
-      await this.db.collection(COLLECTION).doc(id).update({
-        status,
-        updatedAt: now,
-      });
-      const updated = await this.getById(id);
-      if (!updated) throw new Error(`Job ${id} not found`);
-      return updated;
-    } catch {
-      const existing = MOCK_JOBS.find((j) => j.id === id);
-      if (!existing) throw new Error(`Job ${id} not found`);
-      existing.status = status;
-      existing.updatedAt = now;
-      return { ...existing };
-    }
+    await this.db.collection(COLLECTION).doc(id).update({
+      status,
+      updatedAt: now,
+    });
+    const updated = await this.getById(id);
+    if (!updated) throw new Error(`Job ${id} not found`);
+    return updated;
   }
 }

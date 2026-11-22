@@ -37,9 +37,11 @@ service cloud.firestore {
     }
 
     // 2. Candidate Profiles
-    // Strictly private to the candidate, reviewing recruiters, and admins
+    // DEF-015 Remediation: Strictly private to candidate owner and admin.
+    // Arbitrary recruiters cannot query dossiers directly via client SDK.
+    // Recruiter dossier queries must route through authenticated server APIs validating active applications.
     match /candidateProfiles/{candidateId} {
-      allow read: if isOwner(candidateId) || isRecruiter();
+      allow read: if isOwner(candidateId) || isAdmin();
       allow create: if isOwner(candidateId);
       allow update: if isOwner(candidateId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['overallVerificationScore', 'verifiedRecords', 'verifiedAt']);
       allow delete: if isAdmin();
@@ -139,10 +141,14 @@ service cloud.firestore {
     }
 
     // 11. Coding Assessments & Submissions
-    // Hidden test cases are NEVER readable by clients directly
+    // DEF-013 Remediation: Hidden test cases isolated into private subcollection readable only by admin/server
     match /codingAssessments/{assessmentId} {
       allow read: if isAuthenticated();
       allow write: if isRecruiter() || isAdmin();
+
+      match /privateTestCases/{caseId} {
+        allow read, write: if isAdmin();
+      }
     }
 
     match /codingSubmissions/{submissionId} {
@@ -173,10 +179,10 @@ service cloud.firestore {
     }
 
     // 14. Hiring Decisions & Recruiter Overrides
-    // Writeable ONLY by authenticated recruiters of the application's organization or admins
+    // DEF-016 Remediation: Direct client writes strictly forbidden. All decisions must route through /api/hiring/decide via Admin SDK with atomic transaction and immutable audit log.
     match /hiringDecisions/{decisionId} {
       allow read: if isAuthenticated() && (isRecruiter() || isAdmin());
-      allow write: if isAuthenticated() && (isRecruiter() || isAdmin());
+      allow write: if false;
     }
 
     // 15. Immutable Audit Logs & AI Usage

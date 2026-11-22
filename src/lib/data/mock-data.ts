@@ -9,6 +9,14 @@ import { CompetencyProfile } from '@/types/competency';
 import { RoleRecommendation } from '@/types/role';
 import { HiringRecommendationReport } from '@/types/hiring';
 
+/**
+ * Returns true only when demo fixtures are explicitly enabled or during automated testing.
+ * Prevents synthetic/demo data from leaking into live production Firestore queries.
+ */
+export function isDemoFixturesEnabled(): boolean {
+  return process.env.ENABLE_DEMO_FIXTURES === 'true' || process.env.NODE_ENV === 'test';
+}
+
 export const MOCK_ORGANIZATION: Organization = {
   id: 'org-google-deepmind',
   name: 'Nexus Cloud Technologies',

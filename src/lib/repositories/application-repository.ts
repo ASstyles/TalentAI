@@ -1,6 +1,6 @@
 import { BaseRepository } from './base';
 import { JobApplication, ApplicationStatus } from '@/types/application';
-import { MOCK_APPLICATIONS } from '@/lib/data/mock-data';
+import { MOCK_APPLICATIONS, isDemoFixturesEnabled } from '@/lib/data/mock-data';
 
 const COLLECTION = 'jobApplications';
 
@@ -22,14 +22,11 @@ export class ApplicationRepository extends BaseRepository {
       if (!snap.empty) {
         return snap.docs.map((doc) => this.sanitizeDoc<JobApplication>(doc));
       }
-
-      return MOCK_APPLICATIONS.filter((a) => {
-        if (filters?.candidateId && a.candidateId !== filters.candidateId) return false;
-        if (filters?.orgId && a.orgId !== filters.orgId) return false;
-        if (filters?.jobId && a.jobId !== filters.jobId) return false;
-        return true;
-      });
     } catch {
+      // In case of read failure, check demo fixtures
+    }
+
+    if (isDemoFixturesEnabled()) {
       return MOCK_APPLICATIONS.filter((a) => {
         if (filters?.candidateId && a.candidateId !== filters.candidateId) return false;
         if (filters?.orgId && a.orgId !== filters.orgId) return false;
@@ -37,6 +34,8 @@ export class ApplicationRepository extends BaseRepository {
         return true;
       });
     }
+
+    return [];
   }
 
   public static async getById(id: string): Promise<JobApplication | null> {
@@ -45,10 +44,14 @@ export class ApplicationRepository extends BaseRepository {
       if (doc.exists) {
         return this.sanitizeDoc<JobApplication>(doc);
       }
-      return MOCK_APPLICATIONS.find((a) => a.id === id) || null;
     } catch {
+      // Handled below
+    }
+
+    if (isDemoFixturesEnabled()) {
       return MOCK_APPLICATIONS.find((a) => a.id === id) || null;
     }
+    return null;
   }
 
   public static async create(appData: {
@@ -76,31 +79,19 @@ export class ApplicationRepository extends BaseRepository {
       updatedAt: now,
     };
 
-    try {
-      await this.db.collection(COLLECTION).doc(id).set(newApp);
-    } catch (err) {
-      console.warn('[ApplicationRepository] Firestore write skipped (offline/emulator):', err);
-    }
-
+    // DEF-012 Remediation: Fail closed. Throw error on Firestore write failure
+    await this.db.collection(COLLECTION).doc(id).set(newApp);
     return newApp;
   }
 
   public static async updateStatus(id: string, status: ApplicationStatus): Promise<JobApplication> {
     const now = new Date().toISOString();
-    try {
-      await this.db.collection(COLLECTION).doc(id).update({
-        status,
-        updatedAt: now,
-      });
-      const updated = await this.getById(id);
-      if (!updated) throw new Error(`Application ${id} not found`);
-      return updated;
-    } catch {
-      const existing = MOCK_APPLICATIONS.find((a) => a.id === id);
-      if (!existing) throw new Error(`Application ${id} not found`);
-      existing.status = status;
-      existing.updatedAt = now;
-      return { ...existing };
-    }
+    await this.db.collection(COLLECTION).doc(id).update({
+      status,
+      updatedAt: now,
+    });
+    const updated = await this.getById(id);
+    if (!updated) throw new Error(`Application ${id} not found`);
+    return updated;
   }
 }

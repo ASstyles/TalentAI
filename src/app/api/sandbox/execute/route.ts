@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { executeInIsolatedSandbox } from '@/lib/sandbox/runner';
 import { authorizeRequest } from '@/lib/firebase/auth';
+import { AssessmentRepository } from '@/lib/repositories/assessment-repository';
 import { TestCase } from '@/types/coding';
 
 // In-memory sliding window rate limiter to prevent abuse and resource exhaustion
@@ -29,7 +30,10 @@ function checkRateLimit(identifier: string): boolean {
 const ExecuteSchema = z.object({
   code: z.string().min(1, 'Code cannot be empty').max(50000, 'Code exceeds 50KB limit'),
   language: z.enum(['javascript', 'typescript', 'python']),
-  testCases: z.array(
+  assessmentId: z.string().optional(),
+  candidateId: z.string().optional(),
+  // DEF-013 Remediation: Custom test cases are strictly forbidden for candidates
+  customTestCases: z.array(
     z.object({
       id: z.string(),
       input: z.string().max(10000),
@@ -37,9 +41,7 @@ const ExecuteSchema = z.object({
       isHidden: z.boolean().default(false),
       description: z.string().optional(),
     })
-  ).min(1, 'At least one testcase required').max(20, 'Maximum 20 test cases per submission'),
-  candidateId: z.string().optional(),
-  assessmentId: z.string().optional(),
+  ).max(20).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -65,31 +67,102 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { code, language, testCases, candidateId } = parsed.data;
+    const { code, language, assessmentId, candidateId, customTestCases } = parsed.data;
 
-    // Enforce ownership: candidates can only execute their own assessments
-    if (session.role === 'candidate' && candidateId && candidateId !== session.uid) {
-      return NextResponse.json(
-        { error: 'Forbidden: You cannot execute code assessments for another candidate' },
-        { status: 403 }
-      );
+    let targetTestCases: TestCase[] = [];
+
+    // DEF-013 Remediation: Disallow candidate-supplied test cases to manufacture artificial scores
+    if (session.role === 'candidate') {
+      if (customTestCases && customTestCases.length > 0) {
+        return NextResponse.json(
+          { error: 'Forbidden: Candidates cannot supply custom evaluation test cases. Assessments execute against authoritative server suites.' },
+          { status: 403 }
+        );
+      }
+
+      if (candidateId && candidateId !== session.uid) {
+        return NextResponse.json(
+          { error: 'Forbidden: You cannot execute code assessments for another candidate' },
+          { status: 403 }
+        );
+      }
+
+      const effectiveAssessmentId = assessmentId || 'default';
+      targetTestCases = await AssessmentRepository.getPrivateTestCases(effectiveAssessmentId);
+
+      if (!targetTestCases || targetTestCases.length === 0) {
+        return NextResponse.json(
+          { error: `Assessment '${effectiveAssessmentId}' test cases not found on server` },
+          { status: 404 }
+        );
+      }
+    } else {
+      // Recruiter or Admin role
+      if (customTestCases && customTestCases.length > 0) {
+        targetTestCases = customTestCases.map((tc) => ({
+          id: tc.id,
+          input: tc.input,
+          expectedOutput: tc.expectedOutput,
+          isHidden: !!tc.isHidden,
+          description: tc.description,
+        }));
+      } else if (assessmentId) {
+        targetTestCases = await AssessmentRepository.getPrivateTestCases(assessmentId);
+      } else {
+        return NextResponse.json(
+          { error: 'Missing assessmentId or customTestCases' },
+          { status: 400 }
+        );
+      }
     }
 
-    const formattedTestCases: TestCase[] = testCases.map((tc) => ({
-      id: tc.id,
-      input: tc.input,
-      expectedOutput: tc.expectedOutput,
-      isHidden: !!tc.isHidden,
-      description: tc.description,
-    }));
-
+    // Execute in isolated sandbox
     const summary = await executeInIsolatedSandbox({
       code,
       language,
-      testCases: formattedTestCases,
+      testCases: targetTestCases,
       timeoutMs: 3000,
       memoryLimitMb: 128,
     });
+
+    // Sanitization: If candidate requested, obscure hidden test case inputs and outputs
+    if (session.role === 'candidate') {
+      const hiddenIds = new Set(targetTestCases.filter((t) => t.isHidden).map((t) => t.id));
+      summary.results = summary.results.map((res) => {
+        if (hiddenIds.has(res.testCaseId)) {
+          return {
+            ...res,
+            input: '[HIDDEN_EVALUATION_INPUT]',
+            expectedOutput: '[HIDDEN_EVALUATION_OUTPUT]',
+            actualOutput: res.passed ? '[HIDDEN_EVALUATION_OUTPUT]' : '[EXECUTION_MISMATCH]',
+          };
+        }
+        return res;
+      });
+
+      // Persist candidate submission record to Firestore
+      try {
+        const submissionId = `sub-${session.uid}-${Date.now()}`;
+        const validStatus =
+          summary.executionStatus === 'provider_unconfigured' ? 'runtime_error' : summary.executionStatus;
+
+        await AssessmentRepository.recordSubmission({
+          id: submissionId,
+          assessmentId: assessmentId || 'default',
+          candidateId: session.uid,
+          submittedCode: code,
+          language,
+          passedTests: summary.passedTests,
+          totalTests: summary.totalTests,
+          score: summary.score,
+          executionStatus: validStatus,
+          results: summary.results,
+          submittedAt: new Date().toISOString(),
+        });
+      } catch (saveErr) {
+        console.warn('[SandboxExecution] Failed to persist submission record:', saveErr);
+      }
+    }
 
     return NextResponse.json({ success: true, data: summary });
   } catch (err: unknown) {
@@ -98,10 +171,7 @@ export async function POST(req: NextRequest) {
       ? 401
       : message.startsWith('Forbidden')
       ? 403
-      : message.includes('EXECUTION_PROVIDER_UNCONFIGURED')
-      ? 503
       : 500;
-
     return NextResponse.json({ error: message }, { status });
   }
 }

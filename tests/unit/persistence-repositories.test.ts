@@ -4,6 +4,7 @@ import { ApplicationRepository } from '@/lib/repositories/application-repository
 import { CandidateRepository } from '@/lib/repositories/candidate-repository';
 import { HiringDecisionRepository } from '@/lib/repositories/hiring-decision-repository';
 import { AuditRepository } from '@/lib/repositories/audit-repository';
+import { AssessmentRepository } from '@/lib/repositories/assessment-repository';
 import { adminDb } from '@/lib/firebase/admin';
 
 describe('Firestore Persistence Repositories (DEF-006 & DEF-011)', () => {
@@ -170,5 +171,45 @@ describe('Firestore Persistence Repositories (DEF-006 & DEF-011)', () => {
     const matchingLog = auditLogs.find((l) => l.target.includes('app-persist-101'));
     expect(matchingLog).toBeDefined();
     expect(matchingLog?.action).toBe('RECORD_HIRING_DECISION');
+  });
+
+  it('AssessmentRepository exposes public metadata while stripping hidden test cases (DEF-013)', async () => {
+    const publicData = await AssessmentRepository.getPublicAssessment('code-ass-101');
+    expect(publicData).toBeDefined();
+    expect(publicData?.title).toBe('LRU Cache with TTL & Eviction Metrics');
+    // All returned sample test cases must not be hidden
+    expect(publicData?.sampleTestCases.every((tc) => !tc.isHidden)).toBe(true);
+    expect(publicData?.hiddenCount).toBeGreaterThan(0);
+  });
+
+  it('AssessmentRepository retrieves full private test suite for server-side evaluation (DEF-013)', async () => {
+    const privateSuite = await AssessmentRepository.getPrivateTestCases('code-ass-101');
+    expect(privateSuite.length).toBeGreaterThanOrEqual(3);
+    const hasHidden = privateSuite.some((tc) => tc.isHidden);
+    expect(hasHidden).toBe(true);
+  });
+
+  it('Repositories fail closed and throw exceptions on Firestore write rejections (DEF-012)', async () => {
+    // Reconfigure mock to simulate Firestore permission error or network disconnect
+    vi.spyOn(adminDb, 'collection').mockImplementationOnce(() => ({
+      doc: () => ({
+        set: vi.fn().mockRejectedValue(new Error('FIRESTORE_WRITE_REJECTED: simulated network timeout')),
+      }),
+    } as any));
+
+    await expect(
+      JobRepository.create({
+        orgId: 'org-google-deepmind',
+        title: 'Fail Closed Engineer',
+        specialization: 'Backend Engineer',
+        seniority: 'senior',
+        status: 'published',
+        description: 'Testing fail closed behavior',
+        responsibilities: [],
+        mandatoryCompetencies: [],
+        preferredCompetencies: [],
+        location: { type: 'remote', locationString: 'Remote' },
+      })
+    ).rejects.toThrow('FIRESTORE_WRITE_REJECTED');
   });
 });

@@ -127,6 +127,52 @@ interface AuditLogEntry {
 }
 ```
 
+### 2.7 `codingAssessments` & Subcollection `privateTestCases`
+Authoritative coding problem definitions with isolated hidden evaluation suites.
+```typescript
+interface CodingAssessment {
+  id: string;              // code-${id}
+  applicationId: string;
+  candidateId: string;
+  jobId: string;
+  title: string;
+  problemStatement: string;
+  language: 'python' | 'typescript' | 'javascript';
+  starterCode: string;
+  testCases: TestCase[];   // Sample/visible cases
+  timeLimitSeconds: number;
+  memoryLimitMb: number;
+  status: 'assigned' | 'in_progress' | 'submitted' | 'evaluated';
+}
+
+// Subcollection: codingAssessments/{id}/privateTestCases/{caseId}
+// Write/Read restricted strictly to Admin SDK (DEF-013)
+interface PrivateTestCase {
+  id: string;
+  input: string;
+  expectedOutput: string;
+  isHidden: true;
+}
+```
+
+### 2.8 `codingSubmissions`
+Candidate execution history and automated sandbox performance telemetry.
+```typescript
+interface CodingSubmission {
+  id: string;              // sub-${candidateId}-${timestamp}
+  assessmentId: string;
+  candidateId: string;
+  submittedCode: string;
+  language: string;
+  passedTests: number;
+  totalTests: number;
+  score: number;           // 0 - 100
+  executionStatus: 'passed' | 'failed' | 'timeout' | 'runtime_error';
+  results: TestExecutionResult[];
+  submittedAt: string;
+}
+```
+
 ---
 
 ## 3. Indexes & Query Patterns

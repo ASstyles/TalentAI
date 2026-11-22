@@ -58,11 +58,14 @@ Authorization: Bearer <Firebase_ID_Token>
   - *Behavior*: Transactional status update, decision persistence, and immutable audit log entry in `auditLogs`.
 
 ### 2.5 `/api/sandbox/execute`
-- **POST**: Executes code assessments in isolated sandbox.
+- **POST**: Executes code assessments in isolated sandbox against authoritative test suites.
   - *Auth*: Required role `candidate`, `recruiter`, or `admin`.
-  - *Rate Limit*: 10 executions per minute per UID.
-  - *Body*: `{ code: string, language: 'javascript' | 'typescript' | 'python', testCases: TestCase[], candidateId?: string }`
-  - *Security*: Bounded memory (128MB), timeout (3000ms), output cap (64KB), stripped credentials.
+  - *Rate Limit*: 10 executions per minute per UID (sliding window).
+  - *Candidate Body*: `{ code: string, language: 'javascript' | 'typescript' | 'python', assessmentId: string }`
+  - *Zero-Trust Enforcement (DEF-013)*: Candidates cannot supply arbitrary test cases. The server loads authoritative evaluation suites from Firestore via `AssessmentRepository.getPrivateTestCases(assessmentId)`.
+  - *Sanitization*: Hidden test case inputs, expected outputs, and actual outputs are masked (`[HIDDEN_EVALUATION_*]`) to prevent answer extraction.
+  - *Recruiter/Admin*: Can optionally pass `customTestCases` for exploratory test-suite authoring.
+  - *Persistence*: Automatically records submission telemetry in `codingSubmissions`.
 
 ### 2.6 `/api/resume/parse`
 - **POST**: Extracts 5-tier evidence structure from raw resume document text using Gemini.
@@ -77,6 +80,9 @@ Authorization: Bearer <Firebase_ID_Token>
 ### 2.8 `/api/matching/recommend`
 - **POST**: Computes multidimensional competency profile and 16-role compatibility scores.
   - *Auth*: Required role `candidate`, `recruiter`, or `admin`.
+  - *Ownership*: Candidates can only request recommendations for their own profile.
+  - *Body*: `{ candidateId?: string }`
+  - *Server-Side Evidence Authority (DEF-014)*: Does not accept client-asserted scores or fabricated claims. Independently queries authoritative Firestore records (`verifications`, `interviewQuestions`, `codingSubmissions`, `resumes`) before computing competency profile and role rankings. Automatically persists audit record to `roleRecommendations`.
 
 ### 2.9 `/api/admin/gemini/test`
 - **POST**: Diagnostic probe checking Gemini API key validity, latency, model tiers, and JSON generation.

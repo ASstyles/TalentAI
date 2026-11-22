@@ -1,5 +1,5 @@
 import { BaseRepository } from './base';
-import { User, UserRole } from '@/types/user';
+import { User } from '@/types/user';
 
 const COLLECTION = 'users';
 
@@ -31,12 +31,8 @@ export class UserRepository extends BaseRepository {
       lastLoginAt: userData.lastLoginAt || existing?.lastLoginAt || now,
     };
 
-    try {
-      await this.db.collection(COLLECTION).doc(uid).set(merged, { merge: true });
-    } catch (err) {
-      console.warn('[UserRepository] Firestore write skipped:', err);
-    }
-
+    // DEF-012: Fail closed. Do not swallow write exceptions.
+    await this.db.collection(COLLECTION).doc(uid).set(merged, { merge: true });
     return merged;
   }
 }

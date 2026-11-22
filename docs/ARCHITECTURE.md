@@ -34,7 +34,8 @@
 | - ApplicationRepo     | | - Configurable Tiers  | |   Worker (gVisor/OCI) |
 | - CandidateRepo       | | - Error Classification| | - Isolated Subprocess |
 | - HiringDecisionRepo  | | - Injection Defense   | |   Test Runner         |
-| - AuditRepository     | | - Zero Fabrication    | | - node:vm Neutralized |
+| - AssessmentRepository| | - Zero Fabrication    | | - Authoritative Suites|
+| - AuditRepository     | |                       | | - node:vm Neutralized |
 +-----------+-----------+ +-----------+-----------+ +-----------+-----------+
             |                         |                         |
             v                         v                         v
@@ -62,8 +63,9 @@
 - **Multi-Tenant Organization Isolation**: Recruiters are strictly confined to jobs, applications, and candidate dossiers matching their authenticated `orgId`.
 
 ### 2.3 Domain Services & Repositories
-- **Repository Pattern**: Business logic decoupled from page handlers through `JobRepository`, `ApplicationRepository`, `CandidateRepository`, `HiringDecisionRepository`, and `AuditRepository`.
-- **Transactional Consistency**: Status transitions and hiring decisions are executed via atomic Firestore transactions.
+- **Repository Pattern**: Business logic decoupled from page handlers through `JobRepository`, `ApplicationRepository`, `CandidateRepository`, `AssessmentRepository`, `HiringDecisionRepository`, and `AuditRepository`.
+- **Transactional Consistency & Fail-Closed Integrity**: Status transitions and hiring decisions are executed via atomic Firestore transactions. Silent swallowed write failures are eliminated.
+- **Zero-Trust Assessment Isolation**: `AssessmentRepository` isolates private evaluation test cases from candidate clients, enforcing server-authoritative test execution and sanitizing outputs.
 
 ### 2.4 AI Intelligence Layer
 - **Official Google Gen AI SDK (`@google/genai`)**: Centralized singleton client (`GeminiClient`) managing connection pools, retry policies, timeouts, and error classification.
