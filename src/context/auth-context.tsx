@@ -11,7 +11,7 @@ import {
   sendEmailVerification,
   onAuthStateChanged,
 } from 'firebase/auth';
-import { auth } from '@/lib/firebase/client';
+import { getFirebaseAuth, isFirebaseConfigured } from '@/lib/firebase/client';
 import { UserRole } from '@/types/user';
 
 export interface AuthContextType {
@@ -90,19 +90,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Listen for auth state changes strictly in the browser when Firebase is configured
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setLoading(true);
-      await syncSession(currentUser);
+    if (typeof window === 'undefined' || !isFirebaseConfigured()) {
       setLoading(false);
-    });
+      return;
+    }
 
-    return () => unsubscribe();
+    try {
+      const auth = getFirebaseAuth();
+      const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+        setLoading(true);
+        await syncSession(currentUser);
+        setLoading(false);
+      });
+
+      return () => unsubscribe();
+    } catch (err) {
+      console.warn('[AuthContext] Firebase auth listener skipped or failed to initialize:', err);
+      setLoading(false);
+    }
   }, [syncSession]);
 
   const loginWithEmail = async (email: string, password: string) => {
+    if (!isFirebaseConfigured()) {
+      return {
+        success: false,
+        error: 'Firebase Authentication is not configured. Please verify environment settings.',
+      };
+    }
+
     try {
       setLoading(true);
+      const auth = getFirebaseAuth();
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const sessionResult = await syncSession(userCredential.user);
       return { success: true, role: sessionResult.role || undefined };
@@ -115,8 +135,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const loginWithGoogle = async () => {
+    if (!isFirebaseConfigured()) {
+      return {
+        success: false,
+        error: 'Firebase Authentication is not configured. Please verify environment settings.',
+      };
+    }
+
     try {
       setLoading(true);
+      const auth = getFirebaseAuth();
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       const userCredential = await signInWithPopup(auth, provider);
@@ -151,17 +179,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(json.error || 'Failed to create candidate account');
       }
 
-      // Automatically sign in the newly registered candidate
-      const cred = await signInWithEmailAndPassword(auth, data.email, data.password);
-      
-      // Trigger verification email
-      try {
-        await sendEmailVerification(cred.user);
-      } catch (emailErr) {
-        console.warn('[AuthContext] sendEmailVerification warning:', emailErr);
+      // Automatically sign in the newly registered candidate if client auth is available
+      if (isFirebaseConfigured()) {
+        try {
+          const auth = getFirebaseAuth();
+          const cred = await signInWithEmailAndPassword(auth, data.email, data.password);
+          
+          // Trigger verification email
+          try {
+            await sendEmailVerification(cred.user);
+          } catch (emailErr) {
+            console.warn('[AuthContext] sendEmailVerification warning:', emailErr);
+          }
+
+          await syncSession(cred.user);
+        } catch (signInErr) {
+          console.warn('[AuthContext] Client auto-login skipped:', signInErr);
+        }
       }
 
-      await syncSession(cred.user);
       return { success: true };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Registration failed. Please try again.';
@@ -175,7 +211,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true);
       await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
-      await firebaseSignOut(auth);
+      if (isFirebaseConfigured()) {
+        try {
+          const auth = getFirebaseAuth();
+          await firebaseSignOut(auth);
+        } catch (e) {
+          console.warn('[AuthContext] Sign out warning:', e);
+        }
+      }
       setUser(null);
       setRole(null);
       setOrgId(null);
@@ -189,7 +232,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const sendPasswordReset = async (email: string) => {
+    if (!isFirebaseConfigured()) {
+      return {
+        success: false,
+        error: 'Firebase Authentication is not configured. Please verify environment settings.',
+      };
+    }
+
     try {
+      const auth = getFirebaseAuth();
       await sendPasswordResetEmail(auth, email);
       return { success: true };
     } catch (err: unknown) {
@@ -199,9 +250,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const refreshSession = async () => {
-    if (auth.currentUser) {
-      await auth.currentUser.getIdToken(true);
-      await syncSession(auth.currentUser);
+    if (!isFirebaseConfigured()) return;
+    try {
+      const auth = getFirebaseAuth();
+      if (auth.currentUser) {
+        await auth.currentUser.getIdToken(true);
+        await syncSession(auth.currentUser);
+      }
+    } catch (err) {
+      console.warn('[AuthContext] refreshSession warning:', err);
     }
   };
 
