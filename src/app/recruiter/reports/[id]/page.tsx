@@ -191,7 +191,7 @@ export default function EvidenceBasedRecruiterReportPage({
               Logged by: <strong>{recordedResult.decidedBy.role} ({recordedResult.decidedBy.id})</strong> at {new Date(recordedResult.timestamp).toLocaleString()}
             </p>
             <p className="text-xs text-slate-400 italic">
-              Rationale: "{recordedResult.rationale}"
+              Rationale: &quot;{recordedResult.rationale}&quot;
             </p>
           </div>
         ) : (

@@ -201,8 +201,10 @@ export const storage: FirebaseStorage = new Proxy({} as FirebaseStorage, {
   },
 });
 
-export default {
+const clientModule = {
   get app() {
     return getFirebaseApp();
   },
 };
+
+export default clientModule;

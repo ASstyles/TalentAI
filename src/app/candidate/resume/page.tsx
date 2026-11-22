@@ -168,7 +168,7 @@ export default function ResumeIntelligencePage() {
           ) : (
             <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/30 p-12 text-center text-slate-500">
               <FileText className="mx-auto h-8 w-8 text-slate-600 mb-3" />
-              <p className="text-xs">Paste resume text on the left and click "Extract Evidence Tiers" to preview parsed intelligence.</p>
+              <p className="text-xs">Paste resume text on the left and click &quot;Extract Evidence Tiers&quot; to preview parsed intelligence.</p>
             </div>
           )}
         </div>
