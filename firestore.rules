@@ -1,0 +1,236 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions for authentication & authorization
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function getUserRole() {
+      return request.auth.token.role;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && getUserRole() == 'admin';
+    }
+
+    function isRecruiter() {
+      return isAuthenticated() && (getUserRole() == 'recruiter' || isAdmin());
+    }
+
+    function isSameOrg(orgId) {
+      return isAuthenticated() && request.auth.token.orgId == orgId;
+    }
+
+    // 1. Users Collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // 2. Candidate Profiles
+    match /candidateProfiles/{candidateId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(candidateId) || isAdmin();
+      allow update: if isOwner(candidateId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // 3. Organizations
+    match /organizations/{orgId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // 4. Recruiter Profiles
+    match /recruiterProfiles/{recruiterId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOwner(recruiterId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // 5. Job Openings
+    match /jobOpenings/{jobId} {
+      allow read: if true; // Publicly discoverable by candidates
+      allow create, update, delete: if isRecruiter();
+    }
+
+    // 6. Job Applications
+    match /jobApplications/{applicationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.candidateId == request.auth.uid ||
+        isSameOrg(resource.data.orgId) ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated() && request.resource.data.candidateId == request.auth.uid;
+      allow update: if isAuthenticated() && (
+        (isOwner(resource.data.candidateId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'hiringRecommendationId'])) ||
+        isSameOrg(resource.data.orgId) ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // 7. Resumes (Private metadata)
+    match /resumes/{resumeId} {
+      allow read: if isAuthenticated() && (
+        resource.data.candidateId == request.auth.uid ||
+        isRecruiter() ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated() && request.resource.data.candidateId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && (
+        resource.data.candidateId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    // 8. Candidate Projects
+    match /candidateProjects/{projectId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.candidateId == request.auth.uid;
+      allow update, delete: if isAuthenticated() && (
+        resource.data.candidateId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    // 9. Candidate Skills
+    match /candidateSkills/{skillId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && (
+        request.resource.data.candidateId == request.auth.uid ||
+        isAdmin()
+      );
+      allow delete: if isAuthenticated() && (
+        resource.data.candidateId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    // 10. Verification Records (Strictly auditor/admin controlled)
+    match /verificationRecords/{recordId} {
+      allow read: if isAuthenticated() && (
+        resource.data.candidateId == request.auth.uid ||
+        isRecruiter() ||
+        isAdmin()
+      );
+      // Candidates CANNOT verify themselves or alter status
+      allow write: if isRecruiter() || isAdmin();
+    }
+
+    // 11. Interviews & 12. Interview Questions
+    match /interviews/{interviewId} {
+      allow read: if isAuthenticated() && (
+        resource.data.candidateId == request.auth.uid ||
+        isRecruiter() ||
+        isAdmin()
+      );
+      // Status progression handled server-side / authorized
+      allow create, update: if isAuthenticated() && (
+        resource.data.candidateId == request.auth.uid ||
+        isRecruiter() ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /interviewQuestions/{questionId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    // 13. Coding Assessments & 14. Coding Submissions
+    match /codingAssessments/{assessmentId} {
+      allow read: if isAuthenticated();
+      allow write: if isRecruiter() || isAdmin();
+    }
+
+    match /codingSubmissions/{submissionId} {
+      allow read: if isAuthenticated() && (
+        resource.data.candidateId == request.auth.uid ||
+        isRecruiter() ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated() && request.resource.data.candidateId == request.auth.uid;
+      allow update: if isRecruiter() || isAdmin();
+    }
+
+    // 15. Competency Profiles
+    match /competencyProfiles/{candidateId} {
+      allow read: if isAuthenticated();
+      // Computed server-side or via verified pipeline
+      allow write: if isAdmin() || isRecruiter();
+    }
+
+    // 16. Role Recommendations
+    match /roleRecommendations/{recId} {
+      allow read: if isAuthenticated() && (
+        resource.data.candidateId == request.auth.uid ||
+        isRecruiter() ||
+        isAdmin()
+      );
+      allow write: if isAdmin() || isRecruiter();
+    }
+
+    // 17. Hiring Recommendations
+    match /hiringRecommendations/{recId} {
+      // Candidates CANNOT read internal hiring recommendations
+      allow read: if isRecruiter() || isAdmin();
+      allow write: if isRecruiter() || isAdmin();
+    }
+
+    // 18. Recruiter Notes (Confidential)
+    match /recruiterNotes/{noteId} {
+      // Candidates MUST NEVER read recruiter notes
+      allow read: if isRecruiter() || isAdmin();
+      allow write: if isRecruiter() || isAdmin();
+    }
+
+    // 19. Notifications
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && resource.data.recipientUserId == request.auth.uid;
+      allow update: if isAuthenticated() && resource.data.recipientUserId == request.auth.uid;
+      allow create, delete: if isAdmin() || isRecruiter();
+    }
+
+    // 20. Audit Logs (Immutable, Admin only read, write via Admin SDK)
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false; // Write strictly through Admin SDK
+    }
+
+    // 21. AI Usage Logs
+    match /aiUsageLogs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false; // Write strictly through Admin SDK
+    }
+
+    // 22. Consent Records
+    match /consentRecords/{recordId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false; // Immutable
+    }
+
+    // 23. System Settings
+    match /systemSettings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // 24. Assessment Results
+    match /assessmentResults/{resultId} {
+      allow read: if isAuthenticated();
+      allow write: if isRecruiter() || isAdmin();
+    }
+  }
+}
