@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authorizeRequest, setUserRole } from '@/lib/firebase/auth';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { AuditRepository } from '@/lib/repositories/audit-repository';
+import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
 // GET: List all recruiter access requests (Admin Only)
 export async function GET(req: NextRequest) {
@@ -14,7 +15,10 @@ export async function GET(req: NextRequest) {
       .limit(50)
       .get();
 
-    const requests = snap.docs.map((doc) => doc.data());
+    const requests = snap.docs.map((doc: QueryDocumentSnapshot) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
     return NextResponse.json({ success: true, data: requests });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

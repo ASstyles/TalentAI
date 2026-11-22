@@ -1,6 +1,7 @@
 import { BaseRepository } from './base';
 import { RecruiterDecision } from '@/types/hiring';
 import { AuditRepository } from './audit-repository';
+import type { Transaction } from 'firebase-admin/firestore';
 
 const COLLECTION = 'hiringDecisions';
 
@@ -50,7 +51,7 @@ export class HiringDecisionRepository extends BaseRepository {
     const decisionRef = this.db.collection(COLLECTION).doc(id);
     const appRef = this.db.collection('jobApplications').doc(params.applicationId);
 
-    await this.db.runTransaction(async (transaction) => {
+    await this.db.runTransaction(async (transaction: Transaction) => {
       const appDoc = await transaction.get(appRef);
       const nextStatus =
         params.decision === 'advance_to_offer'

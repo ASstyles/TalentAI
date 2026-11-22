@@ -1,5 +1,6 @@
 import { BaseRepository } from './base';
 import { AuditLogEntry } from '@/lib/services/audit-service';
+import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
 const COLLECTION = 'auditLogs';
 
@@ -22,7 +23,7 @@ export class AuditRepository extends BaseRepository {
     try {
       const snap = await this.db.collection(COLLECTION).orderBy('timestamp', 'desc').limit(limitCount).get();
       if (!snap.empty) {
-        return snap.docs.map((doc) => this.sanitizeDoc<AuditLogEntry>(doc));
+        return snap.docs.map((doc: QueryDocumentSnapshot) => this.sanitizeDoc<AuditLogEntry>(doc));
       }
     } catch {
       // Handled by fallback

@@ -1,6 +1,7 @@
 import { BaseRepository } from './base';
 import { CodingAssessment, CodingSubmission, TestCase } from '@/types/coding';
 import { MOCK_CODING_ASSESSMENT, isDemoFixturesEnabled } from '@/lib/data/mock-data';
+import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
 const ASSESSMENTS_COLLECTION = 'codingAssessments';
 const SUBMISSIONS_COLLECTION = 'codingSubmissions';
@@ -36,7 +37,7 @@ export class AssessmentRepository extends BaseRepository {
         .get();
 
       if (!subSnap.empty) {
-        return subSnap.docs.map((d) => this.sanitizeDoc<TestCase>(d));
+        return subSnap.docs.map((d: QueryDocumentSnapshot) => this.sanitizeDoc<TestCase>(d));
       }
 
       // 2. Fall back to parent assessment document test cases
@@ -90,7 +91,7 @@ export class AssessmentRepository extends BaseRepository {
         .get();
 
       if (!snap.empty) {
-        return snap.docs.map((d) => this.sanitizeDoc<CodingSubmission>(d));
+        return snap.docs.map((d: QueryDocumentSnapshot) => this.sanitizeDoc<CodingSubmission>(d));
       }
     } catch {
       // Fallback below
