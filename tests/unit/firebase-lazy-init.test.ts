@@ -2,6 +2,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import { render } from '@testing-library/react';
 
+// Mock useRouter from next/navigation at top level
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+  }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => '/register',
+}));
+
 // Save original process.env
 const originalEnv = { ...process.env };
 
@@ -75,18 +87,6 @@ describe('Firebase Lazy Initialization & Server-Side Import Safety', () => {
   it('4. Registration page renders safely without Firebase initialization when unconfigured', async () => {
     delete process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
     delete process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-
-    // Mock useRouter from next/navigation
-    vi.mock('next/navigation', () => ({
-      useRouter: () => ({
-        push: vi.fn(),
-        replace: vi.fn(),
-        prefetch: vi.fn(),
-        back: vi.fn(),
-      }),
-      useSearchParams: () => new URLSearchParams(),
-      usePathname: () => '/register',
-    }));
 
     const { AuthProvider } = await import('@/context/auth-context');
     const { default: RegisterPage } = await import('@/app/register/page');
