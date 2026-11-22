@@ -67,8 +67,8 @@
 ## Quickstart & Verification
 
 ### Prerequisites
-- Node.js 20+
-- npm or pnpm
+- Node.js 24+ (>=24.12.0)
+- npm 10+
 - Python 3.10+ (for Python sandbox runner)
 
 ### Installation
@@ -82,7 +82,7 @@ npm ci
 ```bash
 npm test
 ```
-*Current test suite: 10 suites, 54/54 tests passing (100%).*
+*Current test suite: 16 suites, 85/85 tests passing (100%).*
 
 ### Running Production Build
 ```bash

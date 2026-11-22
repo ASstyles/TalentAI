@@ -4,7 +4,7 @@
 **System:** TalentAI Enterprise CI/CD Pipeline  
 **CI Engine:** GitHub Actions (`.github/workflows/ci.yml`)  
 **Deployment Target:** Google Cloud Run / Kubernetes (Standalone Docker Container)  
-**Status:** Hardened, Node.js 22 LTS Compatible
+**Status:** Hardened, Node.js 24 LTS Compatible
 
 ---
 
@@ -23,7 +23,7 @@ flowchart LR
 ```
 
 ### 1.1 Stage 1: Static Analysis & Type Safety
-- **Node Runtime:** Node.js `22.x` (LTS).
+- **Node Runtime:** Node.js `24.x` (LTS >= 24.12.0).
 - **Commands:**
   ```bash
   npm ci
@@ -36,21 +36,22 @@ flowchart LR
 - **Commands:**
   ```bash
   npm test
+  npm audit --audit-level=moderate
   ```
 - **Environment Injections:**
   - Mock Firebase emulator environment variables (`FIRESTORE_EMULATOR_HOST`, `FIREBASE_AUTH_EMULATOR_HOST`).
   - Official model identifiers (`GEMINI_MODEL_PRIMARY=gemini-2.5-flash`).
-- **Exit Condition:** All 12 test suites (65 tests) must pass.
+- **Exit Condition:** All 16 test suites (85 tests) must pass and zero moderate+ vulnerabilities.
 
 ### 1.3 Stage 3: Next.js Standalone Build
 - **Commands:**
   ```bash
   npm run build
   ```
-- **Validation:** Verifies static generation of all 39 routes and successful output of `.next/standalone`.
+- **Validation:** Verifies static generation of all 42 routes and successful output of `.next/standalone`.
 
 ### 1.4 Stage 4: Docker Container Packaging
-- Builds multi-stage `Dockerfile` targeting `node:22-bookworm-slim`.
+- Builds multi-stage `Dockerfile` targeting `node:24-bookworm-slim`.
 - Runs `scripts/docker-smoke-test.sh` inside ephemeral CI worker.
 - Publishes immutable SHA-tagged images to Google Artifact Registry / Docker Hub.
 
