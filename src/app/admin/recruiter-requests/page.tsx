@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import {
   ShieldCheck,
@@ -25,7 +25,8 @@ export default function AdminRecruiterRequestsPage() {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
 
-  const fetchRequests = async () => {
+  const fetchRequests = useCallback(async () => {
+    if (!idToken) return;
     setLoading(true);
     try {
       const res = await fetch('/api/admin/recruiter-requests', {
@@ -41,13 +42,11 @@ export default function AdminRecruiterRequestsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [idToken]);
 
   useEffect(() => {
-    if (idToken) {
-      fetchRequests();
-    }
-  }, [idToken]);
+    fetchRequests();
+  }, [fetchRequests]);
 
   const handleAction = async (requestId: string, action: 'approve' | 'reject') => {
     setProcessingId(requestId);

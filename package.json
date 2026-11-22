@@ -2,6 +2,10 @@
   "name": "talent-matrix-ai",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -12,6 +16,8 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@google-cloud/firestore": "^9.4.1",
+    "@google-cloud/storage": "^8.4.0",
     "@google/genai": "^3.6.1",
     "@hookform/resolvers": "^3.10.0",
     "class-variance-authority": "^0.7.1",
@@ -35,6 +41,8 @@
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
     "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^15.1.7",
     "jsdom": "^26.0.0",
     "postcss": "^8.5.2",
     "tailwindcss": "^4.0.6",

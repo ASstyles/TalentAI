@@ -91,10 +91,12 @@ export const adminAuth: AdminAuth = getAuth(adminApp);
 export const adminDb: AdminFirestore = getFirestore(adminApp);
 export const adminStorage: AdminStorage = getStorage(adminApp);
 
-export default {
+const adminModule = {
   app: adminApp,
   auth: adminAuth,
   db: adminDb,
   firestore: adminDb,
   storage: adminStorage,
 };
+
+export default adminModule;
