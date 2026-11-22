@@ -1,23 +1,34 @@
 'use client';
 
 import { useState } from 'react';
-import { Cpu, CheckCircle2, AlertTriangle, RefreshCw, ShieldCheck, Activity } from 'lucide-react';
+import Link from 'next/link';
+import { Cpu, CheckCircle2, AlertTriangle, RefreshCw, Activity, ArrowLeft, AlertCircle } from 'lucide-react';
+import { useAuth } from '@/context/auth-context';
 import { DiagnosticResult } from '@/lib/gemini/connectivity';
 
 export default function AdminGeminiPage() {
+  const { idToken } = useAuth();
   const [testing, setTesting] = useState(false);
   const [diagnostics, setDiagnostics] = useState<DiagnosticResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const runTest = async () => {
+    if (!idToken) return;
     setTesting(true);
+    setError(null);
     try {
-      const res = await fetch('/api/admin/gemini/test');
+      const res = await fetch('/api/admin/gemini/test', {
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+      });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to run diagnostics');
       if (data.success && data.data) {
         setDiagnostics(data.data);
       }
-    } catch (e) {
-      console.error(e);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Diagnostics run failed');
     } finally {
       setTesting(false);
     }
@@ -27,6 +38,12 @@ export default function AdminGeminiPage() {
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
+          <Link
+            href="/admin/dashboard"
+            className="text-xs text-slate-400 hover:text-white flex items-center gap-1 mb-1"
+          >
+            <ArrowLeft className="h-3 w-3" /> Admin Dashboard
+          </Link>
           <div className="inline-flex items-center gap-1.5 rounded-full bg-indigo-950/60 px-3 py-1 text-xs font-semibold text-indigo-400 border border-indigo-800 mb-2">
             <Cpu className="h-3.5 w-3.5" />
             Official @google/genai SDK Orchestration
@@ -45,6 +62,13 @@ export default function AdminGeminiPage() {
           {testing ? 'Running Connectivity Diagnostic...' : 'Run Live Gemini Diagnostics'}
         </button>
       </div>
+
+      {error && (
+        <div className="rounded-xl border border-rose-500/40 bg-rose-950/40 p-3.5 text-xs text-rose-300 flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
 
       {/* Model Tier Architecture Cards */}
       <div className="grid gap-4 sm:grid-cols-4">
@@ -106,46 +130,22 @@ export default function AdminGeminiPage() {
             </span>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <div className="rounded-xl bg-slate-950 p-4 border border-slate-800">
-              <span className="text-xs text-slate-400">API Key Configured</span>
-              <div className="text-base font-bold text-white mt-1">
-                {diagnostics.hasApiKey ? 'YES (Present)' : 'NO (Missing)'}
-              </div>
+          <div className="space-y-3 font-mono text-xs">
+            <div className="text-slate-300">
+              <span className="text-slate-500">Timestamp: </span>
+              {diagnostics.timestamp}
             </div>
-            <div className="rounded-xl bg-slate-950 p-4 border border-slate-800">
-              <span className="text-xs text-slate-400">API Connectivity</span>
-              <div className="text-base font-bold text-white mt-1">
-                {diagnostics.canConnect ? 'CONNECTED' : 'DISCONNECTED'}
+            {diagnostics.errorMessage && (
+              <div className="text-rose-400">
+                <span className="text-slate-500">Error: </span>
+                {diagnostics.errorMessage} ({diagnostics.errorCode})
               </div>
-            </div>
-            <div className="rounded-xl bg-slate-950 p-4 border border-slate-800">
-              <span className="text-xs text-slate-400">Basic Generation</span>
-              <div className="text-base font-bold text-white mt-1">
-                {diagnostics.liveTests.basicGeneration.passed ? (
-                  <span className="text-emerald-400">Passed ({diagnostics.liveTests.basicGeneration.latencyMs}ms)</span>
-                ) : (
-                  <span className="text-slate-400">Not Tested</span>
-                )}
-              </div>
-            </div>
-            <div className="rounded-xl bg-slate-950 p-4 border border-slate-800">
-              <span className="text-xs text-slate-400">Structured JSON</span>
-              <div className="text-base font-bold text-white mt-1">
-                {diagnostics.liveTests.structuredJson.passed ? (
-                  <span className="text-emerald-400">Passed ({diagnostics.liveTests.structuredJson.latencyMs}ms)</span>
-                ) : (
-                  <span className="text-slate-400">Not Tested</span>
-                )}
-              </div>
+            )}
+            <div className="rounded-xl bg-slate-950 p-4 text-slate-300 overflow-x-auto border border-slate-800 space-y-2">
+              <div><strong>Configured Models:</strong> {JSON.stringify(diagnostics.modelsConfigured, null, 2)}</div>
+              <div><strong>Live Tests:</strong> {JSON.stringify(diagnostics.liveTests, null, 2)}</div>
             </div>
           </div>
-
-          {diagnostics.errorMessage && (
-            <div className="rounded-xl border border-amber-500/40 bg-amber-950/20 p-4 text-xs text-amber-300">
-              <strong>Notice:</strong> {diagnostics.errorMessage}
-            </div>
-          )}
         </div>
       )}
     </div>

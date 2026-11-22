@@ -84,4 +84,28 @@ export class HiringDecisionRepository extends BaseRepository {
 
     return record;
   }
+
+  public static async getById(id: string): Promise<HiringDecisionRecord | null> {
+    try {
+      const doc = await this.db.collection(COLLECTION).doc(id).get();
+      if (doc.exists) {
+        return this.sanitizeDoc<HiringDecisionRecord>(doc);
+      }
+    } catch {
+      // Handled below
+    }
+    return null;
+  }
+
+  public static async getByApplicationId(applicationId: string): Promise<HiringDecisionRecord | null> {
+    try {
+      const snap = await this.db.collection(COLLECTION).where('applicationId', '==', applicationId).limit(1).get();
+      if (!snap.empty) {
+        return this.sanitizeDoc<HiringDecisionRecord>(snap.docs[0]);
+      }
+    } catch {
+      // Handled below
+    }
+    return null;
+  }
 }

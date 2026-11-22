@@ -130,6 +130,16 @@ export default function Navbar() {
                     Dashboard
                   </Link>
                   <Link
+                    href="/recruiter/jobs"
+                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+                      pathname.startsWith('/recruiter/jobs') && pathname !== '/recruiter/jobs/new'
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                    }`}
+                  >
+                    Job Openings
+                  </Link>
+                  <Link
                     href="/recruiter/pipeline"
                     className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
                       pathname.startsWith('/recruiter/pipeline')

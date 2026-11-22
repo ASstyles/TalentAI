@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -21,7 +21,7 @@ import { useAuth } from '@/context/auth-context';
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { registerCandidate } = useAuth();
+  const { registerCandidate, user, role, loading: authLoading } = useAuth();
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -34,6 +34,41 @@ export default function RegisterPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (!authLoading && user && role) {
+      router.replace(
+        role === 'admin'
+          ? '/admin/dashboard'
+          : role === 'recruiter'
+          ? '/recruiter/dashboard'
+          : '/candidate/dashboard'
+      );
+    }
+  }, [user, role, authLoading, router]);
+
+  if (!authLoading && user && role) {
+    return (
+      <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center px-4">
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-8 text-center max-w-sm space-y-4 shadow-2xl backdrop-blur-md">
+          <div className="h-10 w-10 mx-auto rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+            <CheckCircle2 className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-white">Already Signed In</h3>
+            <p className="text-xs text-slate-400 mt-1">
+              You are signed in as <strong className="text-white">{user.displayName || user.email}</strong>.
+            </p>
+          </div>
+          <div className="flex items-center justify-center gap-2 text-xs text-blue-400 font-medium">
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+            <span>Redirecting to your dashboard...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Live password strength criteria
   const hasMinLength = password.length >= 8;

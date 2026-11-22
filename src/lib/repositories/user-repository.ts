@@ -35,4 +35,13 @@ export class UserRepository extends BaseRepository {
     await this.db.collection(COLLECTION).doc(uid).set(merged, { merge: true });
     return merged;
   }
+
+  public static async listUsers(limitCount = 50): Promise<User[]> {
+    try {
+      const snap = await this.db.collection(COLLECTION).limit(limitCount).get();
+      return snap.docs.map((doc) => this.sanitizeDoc<User>(doc));
+    } catch {
+      return [];
+    }
+  }
 }

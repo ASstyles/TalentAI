@@ -2,6 +2,7 @@
 
 import { use, useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useAuth } from '@/context/auth-context';
 import {
   MOCK_CANDIDATE,
   MOCK_JOBS,
@@ -21,6 +22,7 @@ export default function EvidenceBasedRecruiterReportPage({
 }) {
   const unwrappedParams = use(params);
   const routeId = unwrappedParams.id;
+  const { idToken } = useAuth();
 
   const [candidateName, setCandidateName] = useState('Applicant');
   const [candidateId, setCandidateId] = useState(routeId);
@@ -30,7 +32,10 @@ export default function EvidenceBasedRecruiterReportPage({
   useEffect(() => {
     async function loadData() {
       try {
-        const res = await fetch(`/api/candidate/profile?candidateId=${encodeURIComponent(routeId)}`);
+        const headers: Record<string, string> = {};
+        if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
+
+        const res = await fetch(`/api/candidate/profile?candidateId=${encodeURIComponent(routeId)}`, { headers });
         if (res.ok) {
           const json = await res.json();
           if (json.data) {
@@ -43,7 +48,7 @@ export default function EvidenceBasedRecruiterReportPage({
       }
     }
     loadData();
-  }, [routeId]);
+  }, [routeId, idToken]);
 
   const profile = calculateCompetencyProfile({
     candidateId,
@@ -83,9 +88,12 @@ export default function EvidenceBasedRecruiterReportPage({
     setSubmitting(true);
     setErrorMessage(null);
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (idToken) headers['Authorization'] = `Bearer ${idToken}`;
+
       const res = await fetch('/api/hiring/decide', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           applicationId,
           candidateId,
