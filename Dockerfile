@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # TalentAI Enterprise Production Multi-Stage Dockerfile
-# Base Image: Debian Bookworm Slim with Node.js 22 LTS
-FROM node:22-bookworm-slim AS base
+# Base Image: Debian Bookworm Slim with Node.js 24 LTS
+FROM node:24-bookworm-slim AS base
 WORKDIR /app
 
 # Step 1: Install production dependencies

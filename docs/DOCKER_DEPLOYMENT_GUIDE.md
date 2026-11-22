@@ -2,7 +2,7 @@
 
 **Document Reference:** `DOC-OPS-005`  
 **System:** TalentAI Containerized Production Infrastructure  
-**Base Image:** `node:22-bookworm-slim` (Debian Bookworm Minimal)  
+**Base Image:** `node:24-bookworm-slim` (Debian Bookworm Minimal)  
 **Output Strategy:** Next.js 15 Standalone Bundle (`output: 'standalone'`)  
 **Compose Version:** Docker Compose v2 (`compose.yaml`)
 
@@ -14,7 +14,7 @@ The platform uses a secure, 3-stage multi-stage `Dockerfile` designed to minimiz
 
 ```mermaid
 flowchart TD
-    A[Stage 1: deps] -->|node:22-bookworm-slim| B(Install Production & Build Dependencies)
+    A[Stage 1: deps] -->|node:24-bookworm-slim| B(Install Production & Build Dependencies)
     B --> C[Stage 2: builder]
     C -->|next build| D(Compile Next.js Standalone Bundle)
     D --> E[Stage 3: runner]
