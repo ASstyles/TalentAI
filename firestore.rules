@@ -197,7 +197,15 @@ service cloud.firestore {
       allow write: if false; // Server-side admin SDK only
     }
 
-    // 16. Default Deny-All Fallback
+    // 16. Recruiter Access Requests
+    // Applicants can submit pending requests; candidates cannot self-approve; only admins can inspect, approve, or reject
+    match /recruiterAccessRequests/{requestId} {
+      allow read: if isAdmin();
+      allow create: if request.resource.data.status == 'pending';
+      allow update, delete: if isAdmin();
+    }
+
+    // 17. Default Deny-All Fallback
     match /{document=**} {
       allow read, write: if false;
     }

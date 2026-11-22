@@ -56,3 +56,19 @@ export interface Organization {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface RecruiterAccessRequest {
+  id: string;
+  userId?: string;
+  fullName: string;
+  workEmail: string;
+  companyName: string;
+  jobTitle: string;
+  businessWebsite: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewedBy?: string;
+  reviewedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}

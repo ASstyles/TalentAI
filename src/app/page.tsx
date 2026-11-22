@@ -42,51 +42,44 @@ export default function LandingPage() {
             <strong className="text-slate-200">what they demonstrate</strong> in adaptive technical environments.
           </p>
 
-          {/* Quick Portal Switcher Gateway Cards */}
-          <div className="mt-10 grid gap-4 sm:grid-cols-3 max-w-3xl mx-auto">
+          {/* Dedicated Portal Choice Gateway Cards */}
+          <div className="mt-10 grid gap-6 sm:grid-cols-2 max-w-2xl mx-auto">
             <Link
-              href="/candidate/dashboard"
-              className="group relative flex flex-col items-start p-5 rounded-2xl border border-slate-800 bg-slate-900/60 hover:bg-slate-800/80 hover:border-blue-500/50 transition-all text-left shadow-lg"
+              href="/login?role=candidate"
+              className="group relative flex flex-col items-start p-6 rounded-3xl border border-slate-800 bg-slate-900/60 hover:bg-slate-900/90 hover:border-blue-500/50 transition-all duration-300 text-left shadow-xl hover:-translate-y-1"
             >
-              <div className="rounded-xl bg-blue-950 p-2.5 text-blue-400 border border-blue-800/50 group-hover:scale-105 transition-transform">
-                <Users className="h-5 w-5" />
+              <div className="rounded-2xl bg-blue-950 p-3 text-blue-400 border border-blue-800/50 group-hover:scale-110 transition-transform">
+                <Users className="h-6 w-6" />
               </div>
-              <h3 className="mt-4 text-base font-semibold text-white flex items-center gap-1.5">
+              <h3 className="mt-4 text-lg font-bold text-white flex items-center gap-1.5">
                 Candidate Portal <ArrowRight className="h-4 w-4 text-blue-400 group-hover:translate-x-1 transition-transform" />
               </h3>
-              <p className="mt-1 text-xs text-slate-400">
-                Explore verified roles, upload resume for 5-tier intelligence, and take adaptive assessments.
+              <p className="mt-1.5 text-xs text-slate-400 leading-relaxed">
+                Build verified engineering profiles, complete adaptive technical interviews, and take bounded sandbox coding assessments.
               </p>
+              <div className="mt-4 pt-3 border-t border-slate-800/80 w-full flex items-center justify-between text-xs font-semibold text-blue-400">
+                <span>Enter Candidate Gateway</span>
+                <span className="text-[11px] text-slate-500">Sign in / Register</span>
+              </div>
             </Link>
 
             <Link
-              href="/recruiter/dashboard"
-              className="group relative flex flex-col items-start p-5 rounded-2xl border border-slate-800 bg-slate-900/60 hover:bg-slate-800/80 hover:border-indigo-500/50 transition-all text-left shadow-lg"
+              href="/login?role=recruiter"
+              className="group relative flex flex-col items-start p-6 rounded-3xl border border-slate-800 bg-slate-900/60 hover:bg-slate-900/90 hover:border-indigo-500/50 transition-all duration-300 text-left shadow-xl hover:-translate-y-1"
             >
-              <div className="rounded-xl bg-indigo-950 p-2.5 text-indigo-400 border border-indigo-800/50 group-hover:scale-105 transition-transform">
-                <Award className="h-5 w-5" />
+              <div className="rounded-2xl bg-indigo-950 p-3 text-indigo-400 border border-indigo-800/50 group-hover:scale-110 transition-transform">
+                <Award className="h-6 w-6" />
               </div>
-              <h3 className="mt-4 text-base font-semibold text-white flex items-center gap-1.5">
+              <h3 className="mt-4 text-lg font-bold text-white flex items-center gap-1.5">
                 Recruiter Portal <ArrowRight className="h-4 w-4 text-indigo-400 group-hover:translate-x-1 transition-transform" />
               </h3>
-              <p className="mt-1 text-xs text-slate-400">
-                Review candidate pipelines, evidence matrix reports, and record human hiring decisions.
+              <p className="mt-1.5 text-xs text-slate-400 leading-relaxed">
+                Access candidate pipelines, inspect verified multi-tier evidence matrix reports, and record human hiring decisions.
               </p>
-            </Link>
-
-            <Link
-              href="/admin/dashboard"
-              className="group relative flex flex-col items-start p-5 rounded-2xl border border-slate-800 bg-slate-900/60 hover:bg-slate-800/80 hover:border-emerald-500/50 transition-all text-left shadow-lg"
-            >
-              <div className="rounded-xl bg-emerald-950 p-2.5 text-emerald-400 border border-emerald-800/50 group-hover:scale-105 transition-transform">
-                <ShieldCheck className="h-5 w-5" />
+              <div className="mt-4 pt-3 border-t border-slate-800/80 w-full flex items-center justify-between text-xs font-semibold text-indigo-400">
+                <span>Enter Recruiter Gateway</span>
+                <span className="text-[11px] text-slate-500">Enterprise Access</span>
               </div>
-              <h3 className="mt-4 text-base font-semibold text-white flex items-center gap-1.5">
-                Admin Portal <ArrowRight className="h-4 w-4 text-emerald-400 group-hover:translate-x-1 transition-transform" />
-              </h3>
-              <p className="mt-1 text-xs text-slate-400">
-                Inspect 16-role taxonomy rubrics, monitor Gemini token spend, and review immutable audit logs.
-              </p>
             </Link>
           </div>
         </div>

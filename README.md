@@ -82,7 +82,7 @@ npm ci
 ```bash
 npm test
 ```
-*Current test suite: 9 suites, 43/43 tests passing (100%).*
+*Current test suite: 10 suites, 54/54 tests passing (100%).*
 
 ### Running Production Build
 ```bash
@@ -104,5 +104,6 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 - [Production Deployment Guide](docs/DEPLOYMENT_GUIDE.md)
 - [Automated Test Results](docs/TEST_RESULTS.md)
 - [System Limitations](docs/REMAINING_LIMITATIONS.md)
+- [Authentication & Role Gateway Guide](docs/AUTHENTICATION_GUIDE.md)
 - [Final Defect Register](docs/FINAL_DEFECT_REGISTER.md)
 - [Final Engineering Report](docs/FINAL_ENGINEERING_REPORT.md)
