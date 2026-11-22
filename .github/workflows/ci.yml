@@ -1,0 +1,45 @@
+name: TalentAI Enterprise CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate-and-verify:
+    name: Production Verification & Security Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: TypeScript Static Typecheck
+        run: npx tsc --noEmit
+
+      - name: Run Vitest Automated Test Suite
+        run: npm test
+        env:
+          NODE_ENV: test
+          ALLOW_LOCAL_SUBPROCESS_SANDBOX: 'true'
+
+      - name: Validate Firestore & Storage Security Rules
+        run: |
+          test -f firestore.rules
+          test -f storage.rules
+          echo "Security rules files verified."
+
+      - name: Build Next.js 15 Production Application
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1

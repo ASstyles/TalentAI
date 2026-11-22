@@ -18,29 +18,33 @@ service firebase.storage {
       return isAuthenticated() && (request.auth.token.role == 'recruiter' || isAdmin());
     }
 
-    // Candidate Resumes
+    // Candidate Resumes (Strict content-type and size validation)
     match /candidates/{candidateId}/resumes/{resumeFile} {
       allow read: if isOwner(candidateId) || isRecruiter();
       allow write: if isOwner(candidateId) &&
-        request.resource.size < 10 * 1024 * 1024 && // 10MB limit
+        request.resource.size <= 10 * 1024 * 1024 && // Max 10MB
         (request.resource.contentType.matches('application/pdf') ||
          request.resource.contentType.matches('text/plain') ||
          request.resource.contentType.matches('application/vnd.openxmlformats-officedocument.wordprocessingml.document'));
     }
 
-    // Candidate Verification Documents (Diplomas, IDs, Certs)
+    // Candidate Verification Documents (Diplomas, Certificates)
     match /candidates/{candidateId}/verifications/{verificationId}/{docFile} {
       allow read: if isOwner(candidateId) || isRecruiter();
-      allow write: if isOwner(candidateId) && request.resource.size < 15 * 1024 * 1024;
+      allow write: if isOwner(candidateId) &&
+        request.resource.size <= 15 * 1024 * 1024 && // Max 15MB
+        (request.resource.contentType.matches('application/pdf') ||
+         request.resource.contentType.matches('image/jpeg') ||
+         request.resource.contentType.matches('image/png'));
     }
 
-    // Public Organization Assets (Logos)
+    // Public Organization Assets (Company Logos)
     match /organizations/{orgId}/public/{fileName} {
       allow read: if true;
       allow write: if isRecruiter() && request.auth.token.orgId == orgId;
     }
 
-    // Default deny all other paths
+    // Deny-by-default for all other files
     match /{allPaths=**} {
       allow read, write: if false;
     }

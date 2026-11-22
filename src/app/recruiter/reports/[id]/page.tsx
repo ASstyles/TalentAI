@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { use, useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
   MOCK_CANDIDATE,
   MOCK_JOBS,
@@ -11,11 +12,41 @@ import {
 import { calculateCompetencyProfile } from '@/lib/competency/scoring';
 import { generateHiringRecommendation } from '@/lib/hiring/decision-support';
 import { RecruiterDecision } from '@/types/hiring';
-import { ShieldCheck, Award, CheckCircle2, AlertTriangle, FileText, Send } from 'lucide-react';
+import { ShieldCheck, Award, CheckCircle2, AlertTriangle, FileText, Send, ArrowLeft, Loader2 } from 'lucide-react';
 
-export default function EvidenceBasedRecruiterReportPage() {
+export default function EvidenceBasedRecruiterReportPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const unwrappedParams = use(params);
+  const routeId = unwrappedParams.id;
+
+  const [candidateName, setCandidateName] = useState('Applicant');
+  const [candidateId, setCandidateId] = useState(routeId);
+  const [jobTitle, setJobTitle] = useState('Lead Full-Stack Engineer');
+  const [applicationId, setApplicationId] = useState(`app-${routeId}`);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const res = await fetch(`/api/candidate/profile?candidateId=${encodeURIComponent(routeId)}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.data) {
+            setCandidateName(json.data.headline ? json.data.headline.split('|')[0].trim() : `Candidate ${routeId}`);
+            setCandidateId(json.data.id || routeId);
+          }
+        }
+      } catch {
+        // Fallback
+      }
+    }
+    loadData();
+  }, [routeId]);
+
   const profile = calculateCompetencyProfile({
-    candidateId: MOCK_CANDIDATE.id,
+    candidateId,
     claimedSkills: ['TypeScript', 'React', 'Node.js', 'PostgreSQL', 'Docker'],
     extractedSkills: [
       { name: 'TypeScript', category: 'languages', evidenceTier: 'project_supported', confidence: 0.95 },
@@ -28,9 +59,9 @@ export default function EvidenceBasedRecruiterReportPage() {
   });
 
   const report = generateHiringRecommendation({
-    applicationId: 'app-alex-lead-fullstack',
-    candidateId: MOCK_CANDIDATE.id,
-    candidateName: 'Alex Mercer',
+    applicationId,
+    candidateId,
+    candidateName,
     job: MOCK_JOBS[0],
     competencyProfile: profile,
     verificationRecords: MOCK_VERIFICATIONS,
@@ -41,33 +72,34 @@ export default function EvidenceBasedRecruiterReportPage() {
   // Human Recruiter Decision Form State
   const [decision, setDecision] = useState<RecruiterDecision>('advance_to_offer');
   const [rationale, setRationale] = useState(
-    'Candidate demonstrated exemplary distributed caching and React concurrency expertise. Passed 100% of isolated coding tests and confirmed 2 independent Tier 4 credentials.'
+    'Candidate demonstrated exemplary systems design, passed coding assessment with 100% test case pass rate, and provided verified credentials.'
   );
   const [isOverride, setIsOverride] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [recordedResult, setRecordedResult] = useState<any | null>(null);
 
   const handleSubmitDecision = async () => {
     setSubmitting(true);
+    setErrorMessage(null);
     try {
       const res = await fetch('/api/hiring/decide', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          applicationId: report.applicationId,
-          candidateId: report.candidateId,
+          applicationId,
+          candidateId,
           decision,
           rationale,
-          recruiterId: 'recruiter-sarah-chen',
-          recruiterName: 'Sarah Chen (Lead Talent Partner)',
           isOverride,
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(data.error || 'Failed to record hiring decision');
       setRecordedResult(data.data);
     } catch (err: unknown) {
-      console.error(err);
+      const message = err instanceof Error ? err.message : String(err);
+      setErrorMessage(message);
     } finally {
       setSubmitting(false);
     }
@@ -75,6 +107,12 @@ export default function EvidenceBasedRecruiterReportPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8 space-y-8">
+      <div className="flex items-center gap-2">
+        <Link href="/recruiter/pipeline" className="flex items-center gap-1 text-xs text-indigo-400 hover:underline">
+          <ArrowLeft className="h-3.5 w-3.5" /> Back to Pipeline
+        </Link>
+      </div>
+
       {/* Report Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-800 pb-4 gap-4">
         <div>
@@ -82,7 +120,7 @@ export default function EvidenceBasedRecruiterReportPage() {
             Evidence-Based Recruiter Hiring Report
           </span>
           <h1 className="text-2xl font-bold text-white mt-1">Candidate Intelligence Dossier: {report.candidateName}</h1>
-          <p className="text-xs text-slate-400">Position: {report.jobTitle}</p>
+          <p className="text-xs text-slate-400">Position: {report.jobTitle} • ID: {candidateId}</p>
         </div>
         <div>
           <span className="rounded-full bg-emerald-950 px-3.5 py-1.5 text-xs font-bold text-emerald-400 border border-emerald-800">
@@ -136,6 +174,13 @@ export default function EvidenceBasedRecruiterReportPage() {
           AI provides decision-support intelligence. The hiring decision is made and owned by an accountable human recruiter and committed to an immutable audit trail.
         </p>
 
+        {errorMessage && (
+          <div className="rounded-xl border border-rose-800 bg-rose-950/60 p-4 text-xs font-semibold text-rose-300 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
         {recordedResult ? (
           <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/30 p-5 space-y-2">
             <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
@@ -143,7 +188,7 @@ export default function EvidenceBasedRecruiterReportPage() {
               Decision Recorded: {recordedResult.decision.toUpperCase()}
             </div>
             <p className="text-xs text-slate-300">
-              Logged by: <strong>{recordedResult.decidedBy.name}</strong> at {new Date(recordedResult.timestamp).toLocaleString()}
+              Logged by: <strong>{recordedResult.decidedBy.role} ({recordedResult.decidedBy.id})</strong> at {new Date(recordedResult.timestamp).toLocaleString()}
             </p>
             <p className="text-xs text-slate-400 italic">
               Rationale: "{recordedResult.rationale}"
@@ -199,7 +244,7 @@ export default function EvidenceBasedRecruiterReportPage() {
               disabled={submitting || !rationale.trim()}
               className="flex items-center gap-2 rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-50 transition-all shadow-md shadow-indigo-500/20"
             >
-              <Send className="h-3.5 w-3.5" />
+              {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
               {submitting ? 'Recording to Audit Trail...' : 'Commit Human Hiring Decision'}
             </button>
           </div>

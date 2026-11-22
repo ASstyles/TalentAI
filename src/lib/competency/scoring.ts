@@ -1,4 +1,4 @@
-import { CompetencyProfile, CompetencyScoreItem } from '@/types/competency';
+import { CompetencyProfile, CompetencyScoreItem, CompetencyStatus } from '@/types/competency';
 import { EvidenceTier, TIER_WEIGHTS, ExtractedSkill } from '@/types/resume';
 import { InterviewQuestion } from '@/types/interview';
 import { CodingSubmission } from '@/types/coding';
@@ -14,17 +14,18 @@ interface AggregationInput {
 }
 
 /**
- * Calculates evidence-weighted competency scores across all 5 tiers:
- * Tier 1 (claimed): 0.1
- * Tier 2 (extracted): 0.2
- * Tier 3 (project_supported): 0.4
- * Tier 4 (verified): 0.7
- * Tier 5 (assessed): 1.0
+ * Mathematically defensible competency profile calculator.
+ * Strictly separates:
+ * - Claimed score vs. Demonstrated score
+ * - Verification state ('unverified', 'partially_verified', 'verified', 'refuted')
+ * - Evidence coverage (% of evidence hierarchy present)
+ * - Uncertainty (high when unassessed or purely claimed, low when corroborated across verified/assessed tiers)
+ * - Distinct competency status (e.g. unassessed_claimed vs. assessed_weak)
  */
 export function calculateCompetencyProfile(input: AggregationInput): CompetencyProfile {
   const competencies: Record<string, CompetencyScoreItem> = {};
 
-  const ensureSkill = (skillName: string, category: CompetencyScoreItem['category'] = 'languages') => {
+  const ensureSkill = (skillName: string, category: CompetencyScoreItem['category'] = 'languages'): CompetencyScoreItem => {
     const key = skillName.trim().toLowerCase();
     if (!competencies[key]) {
       competencies[key] = {
@@ -32,8 +33,14 @@ export function calculateCompetencyProfile(input: AggregationInput): CompetencyP
         skillName: skillName.trim(),
         category,
         demonstratedScore: 0,
+        claimedScore: undefined,
         coverage: 0,
         confidence: 0,
+        uncertainty: 100,
+        verificationState: 'unverified',
+        assessmentQuality: 'none',
+        freshnessScore: 100,
+        status: 'unassessed_claimed',
         evidenceTiersPresent: [],
         sourceBreakdown: {},
       };
@@ -48,7 +55,8 @@ export function calculateCompetencyProfile(input: AggregationInput): CompetencyP
       if (!item.evidenceTiersPresent.includes('claimed')) {
         item.evidenceTiersPresent.push('claimed');
       }
-      item.sourceBreakdown.claimedScore = 50; // Neutral baseline for pure claim
+      item.claimedScore = 50; // Claimed baseline
+      item.sourceBreakdown.claimedScore = 50;
     }
   }
 
@@ -73,13 +81,21 @@ export function calculateCompetencyProfile(input: AggregationInput): CompetencyP
   // 3. Process Independently Verified Records (Tier 4)
   if (input.verifiedRecords) {
     for (const record of input.verifiedRecords) {
-      if (record.status === 'verified' || record.status === 'partially_verified') {
-        const item = ensureSkill(record.claimTitle);
+      const item = ensureSkill(record.claimTitle);
+      if (record.status === 'verified') {
         if (!item.evidenceTiersPresent.includes('verified')) {
           item.evidenceTiersPresent.push('verified');
         }
-        const score = record.status === 'verified' ? record.confidence : Math.round(record.confidence * 0.7);
-        item.sourceBreakdown.verifiedScore = Math.max(item.sourceBreakdown.verifiedScore || 0, score);
+        item.verificationState = 'verified';
+        item.sourceBreakdown.verifiedScore = Math.max(item.sourceBreakdown.verifiedScore || 0, record.confidence);
+      } else if (record.status === 'partially_verified') {
+        if (!item.evidenceTiersPresent.includes('verified')) {
+          item.evidenceTiersPresent.push('verified');
+        }
+        item.verificationState = 'partially_verified';
+        item.sourceBreakdown.verifiedScore = Math.max(item.sourceBreakdown.verifiedScore || 0, Math.round(record.confidence * 0.7));
+      } else if (record.status === 'failed') {
+        item.verificationState = 'refuted';
       }
     }
   }
@@ -92,6 +108,7 @@ export function calculateCompetencyProfile(input: AggregationInput): CompetencyP
         if (!item.evidenceTiersPresent.includes('assessed')) {
           item.evidenceTiersPresent.push('assessed');
         }
+        item.assessmentQuality = item.assessmentQuality === 'rigorous' ? 'rigorous' : 'basic';
         const evalScore = q.evaluation.compositeScore;
         item.sourceBreakdown.assessedScore = Math.max(item.sourceBreakdown.assessedScore || 0, evalScore);
       }
@@ -106,14 +123,17 @@ export function calculateCompetencyProfile(input: AggregationInput): CompetencyP
         if (!item.evidenceTiersPresent.includes('assessed')) {
           item.evidenceTiersPresent.push('assessed');
         }
+        item.assessmentQuality = 'rigorous';
         item.sourceBreakdown.assessedScore = Math.max(item.sourceBreakdown.assessedScore || 0, sub.score);
       }
     }
   }
 
-  // Compute weighted formula for each competency
-  let totalProficiency = 0;
+  // Calculate multidimensional scores per competency
+  let totalDemonstrated = 0;
   let totalIntegrity = 0;
+  let assessedCount = 0;
+  let unassessedCount = 0;
   const skillCount = Object.keys(competencies).length;
 
   for (const key of Object.keys(competencies)) {
@@ -145,14 +165,33 @@ export function calculateCompetencyProfile(input: AggregationInput): CompetencyP
     }
 
     item.demonstratedScore = weightSum > 0 ? Math.round(weightedSum / weightSum) : 0;
-    // Coverage is percentage of the 5 evidence tiers present
     item.coverage = Math.min(100, Math.round((tiers.length / 5) * 100));
 
-    // Confidence scales with presence of higher tiers (verified + assessed)
+    // Confidence increases as higher tiers (verified & assessed) are established
     const highTierCount = tiers.filter((t) => t === 'verified' || t === 'assessed' || t === 'project_supported').length;
     item.confidence = Math.min(100, Math.round(30 + highTierCount * 23));
+    item.uncertainty = Math.max(0, 100 - item.confidence);
 
-    totalProficiency += item.demonstratedScore;
+    // Determine honest, non-fabricated status
+    const hasDemonstratedEvidence = tiers.includes('assessed') || tiers.includes('project_supported');
+    if (hasDemonstratedEvidence) {
+      assessedCount++;
+      if (item.demonstratedScore >= 80) {
+        item.status = 'assessed_strong';
+      } else if (item.demonstratedScore >= 60) {
+        item.status = 'assessed_competent';
+      } else {
+        item.status = 'assessed_weak';
+      }
+    } else if (tiers.includes('claimed') || tiers.includes('extracted')) {
+      unassessedCount++;
+      item.status = 'unassessed_claimed';
+    } else {
+      unassessedCount++;
+      item.status = 'insufficient_evidence';
+    }
+
+    totalDemonstrated += item.demonstratedScore;
     if (tiers.includes('verified') || tiers.includes('assessed')) {
       totalIntegrity += 100;
     } else if (tiers.includes('project_supported')) {
@@ -175,8 +214,10 @@ export function calculateCompetencyProfile(input: AggregationInput): CompetencyP
     competencies,
     strongestSkills,
     growthOpportunities,
-    overallProficiencyScore: skillCount > 0 ? Math.round(totalProficiency / skillCount) : 0,
+    overallProficiencyScore: skillCount > 0 ? Math.round(totalDemonstrated / skillCount) : 0,
     evidenceIntegrityScore: skillCount > 0 ? Math.round(totalIntegrity / skillCount) : 0,
+    assessedSkillCount: assessedCount,
+    unassessedSkillCount: unassessedCount,
     lastComputedAt: new Date().toISOString(),
   };
 }

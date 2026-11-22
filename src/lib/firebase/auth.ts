@@ -11,7 +11,7 @@ export interface DecodedSession {
 
 /**
  * Assigns cryptographic Custom Claims to a user's Firebase Auth token.
- * This is the ONLY source of truth for role-based authorization across frontend & Firestore.
+ * This is the authoritative source of truth for role-based authorization across frontend & Firestore.
  */
 export async function setUserRole(uid: string, role: UserRole, orgId?: string): Promise<void> {
   const claims = {
@@ -19,7 +19,7 @@ export async function setUserRole(uid: string, role: UserRole, orgId?: string): 
     orgId: orgId || null,
   };
   await adminAuth.setCustomUserClaims(uid, claims);
-  // Also reflect in the users document in Firestore
+  // Synchronize with the users document in Firestore
   await adminDb.collection('users').doc(uid).set(
     {
       role,
@@ -31,65 +31,52 @@ export async function setUserRole(uid: string, role: UserRole, orgId?: string): 
 }
 
 /**
- * Validates a Bearer token or session cookie and ensures role authorization.
+ * Validates a Bearer token or session cookie and verifies revocation status.
+ * Fails closed if token is invalid, expired, or revoked.
  */
 export async function verifyServerSession(token: string): Promise<DecodedSession> {
   try {
-    const decoded = await adminAuth.verifyIdToken(token);
+    // checkRevoked = true enforces checking token revocation against Firebase Auth
+    const decoded = await adminAuth.verifyIdToken(token, true);
     return {
       uid: decoded.uid,
       email: decoded.email,
       role: (decoded.role as UserRole) || 'candidate',
       orgId: (decoded.orgId as string) || undefined,
     };
-  } catch {
-    throw new Error('Invalid or expired authentication token');
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Unauthorized: Invalid, expired, or revoked authentication token: ${message}`);
   }
 }
 
 /**
- * Authorizes a Next.js server request against required roles.
- * Prevents Broken Object-Level Authorization (BOLA) and role escalation.
+ * Authorizes an incoming Next.js server request against required roles.
+ * Enforces Zero Trust:
+ * - NO headers like x-user-role or x-user-id
+ * - NO fallback default roles
+ * - Fails closed if unauthenticated or without valid token
  */
 export async function authorizeRequest(
   req: NextRequest,
   allowedRoles: UserRole[] = ['recruiter', 'admin']
 ): Promise<DecodedSession> {
   const authHeader = req.headers.get('authorization');
-  const devRoleHeader = req.headers.get('x-user-role') as UserRole | null;
-  const devUidHeader = req.headers.get('x-user-id');
-  const hasFirebasePrivateKey = !!process.env.FIREBASE_PRIVATE_KEY;
+  const sessionCookie = req.cookies.get('session')?.value;
+  const token = authHeader?.startsWith('Bearer ')
+    ? authHeader.split('Bearer ')[1].trim()
+    : sessionCookie;
 
-  if (authHeader?.startsWith('Bearer ')) {
-    const token = authHeader.split('Bearer ')[1];
-    const session = await verifyServerSession(token);
-    if (!allowedRoles.includes(session.role)) {
-      throw new Error(`Forbidden: Role '${session.role}' is not authorized. Required: ${allowedRoles.join(', ')}`);
-    }
-    return session;
+  if (!token) {
+    throw new Error('Unauthorized: Missing required authentication token');
   }
 
-  // When running locally without a production service account key, allow role assertion header
-  if (!hasFirebasePrivateKey && devRoleHeader) {
-    if (!allowedRoles.includes(devRoleHeader)) {
-      throw new Error(`Forbidden: Role '${devRoleHeader}' is not authorized. Required: ${allowedRoles.join(', ')}`);
-    }
-    return {
-      uid: devUidHeader || 'dev-user-id',
-      role: devRoleHeader,
-      orgId: 'dev-org',
-    };
+  // Verify token cryptographically with revocation check
+  const session = await verifyServerSession(token);
+
+  if (!allowedRoles.includes(session.role)) {
+    throw new Error(`Forbidden: Role '${session.role}' is not authorized. Required: ${allowedRoles.join(', ')}`);
   }
 
-  // Default to authenticated recruiter in local standalone demo mode if no auth header passed
-  if (!hasFirebasePrivateKey && !authHeader) {
-    const defaultRole: UserRole = allowedRoles.includes('admin') ? 'admin' : 'recruiter';
-    return {
-      uid: 'user-recruiter-1',
-      role: defaultRole,
-      orgId: 'org-google-deepmind',
-    };
-  }
-
-  throw new Error('Unauthorized: Missing or invalid authentication credentials');
+  return session;
 }
