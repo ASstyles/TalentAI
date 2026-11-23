@@ -1,4 +1,4 @@
-import { BaseRepository } from './base';
+import { BaseRepository, PersistenceError, sanitizeForFirestore } from './base';
 import { CandidateProfile } from '@/types/user';
 import { MOCK_CANDIDATE, isDemoFixturesEnabled } from '@/lib/data/mock-data';
 
@@ -6,18 +6,28 @@ const COLLECTION = 'candidateProfiles';
 
 export class CandidateRepository extends BaseRepository {
   public static async getProfile(candidateId: string): Promise<CandidateProfile | null> {
+    if (!candidateId || typeof candidateId !== 'string') return null;
+    const cleanId = candidateId.trim();
+
     try {
-      const doc = await this.db.collection(COLLECTION).doc(candidateId).get();
+      const doc = await this.db.collection(COLLECTION).doc(cleanId).get();
       if (doc.exists) {
         return this.sanitizeDoc<CandidateProfile>(doc);
       }
-    } catch {
-      // In case of read failure, check demo fixtures
+    } catch (err: unknown) {
+      if (!isDemoFixturesEnabled()) {
+        const errorObj = err as { code?: string; message?: string };
+        throw new PersistenceError(
+          `Failed to get candidate profile '${candidateId}': ${errorObj?.message || 'Database error'}`,
+          errorObj?.code || 'FIRESTORE_READ_ERROR',
+          err
+        );
+      }
     }
 
     if (isDemoFixturesEnabled()) {
-      if (candidateId === MOCK_CANDIDATE.id || candidateId === MOCK_CANDIDATE.userId || candidateId.includes('alex')) {
-        return { ...MOCK_CANDIDATE, id: candidateId };
+      if (cleanId === MOCK_CANDIDATE.id || cleanId === MOCK_CANDIDATE.userId || cleanId.includes('alex')) {
+        return { ...MOCK_CANDIDATE, id: cleanId };
       }
     }
     return null;
@@ -27,10 +37,22 @@ export class CandidateRepository extends BaseRepository {
     candidateId: string,
     updates: Partial<CandidateProfile>
   ): Promise<CandidateProfile> {
+    if (!candidateId || typeof candidateId !== 'string') {
+      throw new PersistenceError('Invalid candidate ID provided for saveProfile', 'INVALID_ARGUMENT');
+    }
+    const cleanId = candidateId.trim();
     const now = new Date().toISOString();
-    const existing = (await this.getProfile(candidateId)) || {
-      id: candidateId,
-      userId: candidateId,
+
+    let existing: CandidateProfile | null = null;
+    try {
+      existing = await this.getProfile(cleanId);
+    } catch {
+      // Continue with default profile initialization
+    }
+
+    const defaultProfile: CandidateProfile = {
+      id: cleanId,
+      userId: cleanId,
       headline: '',
       summary: '',
       yearsOfExperience: 0,
@@ -40,15 +62,28 @@ export class CandidateRepository extends BaseRepository {
       updatedAt: now,
     };
 
-    const merged: CandidateProfile = {
-      ...existing,
+    const merged = {
+      ...defaultProfile,
+      ...(existing || {}),
       ...updates,
-      id: candidateId,
+      id: cleanId,
+      userId: cleanId,
       updatedAt: now,
     };
 
-    // DEF-012 Remediation: Fail closed. Throw error on Firestore write failure
-    await this.db.collection(COLLECTION).doc(candidateId).set(merged, { merge: true });
-    return merged;
+    const sanitized = sanitizeForFirestore(merged);
+
+    try {
+      await this.db.collection(COLLECTION).doc(cleanId).set(sanitized, { merge: true });
+    } catch (err: unknown) {
+      const errorObj = err as { code?: string; message?: string };
+      throw new PersistenceError(
+        `Failed to save candidate profile '${cleanId}': ${errorObj?.message || 'Write error'}`,
+        errorObj?.code || 'FIRESTORE_WRITE_ERROR',
+        err
+      );
+    }
+
+    return sanitized as unknown as CandidateProfile;
   }
 }

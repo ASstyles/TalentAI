@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authorizeRequest, setUserRole } from '@/lib/firebase/auth';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { AuditRepository } from '@/lib/repositories/audit-repository';
+import { UserRepository } from '@/lib/repositories/user-repository';
+import { sanitizeForFirestore } from '@/lib/firebase/firestore-sanitizer';
 import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
 // GET: List all recruiter access requests (Admin Only)
@@ -57,14 +59,14 @@ export async function POST(req: NextRequest) {
       const orgId = `org-${orgDomain.replace(/[^a-zA-Z0-9]/g, '-')}`;
 
       await adminDb.collection('organizations').doc(orgId).set(
-        {
+        sanitizeForFirestore({
           id: orgId,
           name: reqData.companyName,
           domain: orgDomain,
           tier: 'enterprise',
           settings: { requireIdentityVerification: true, allowVoiceInterview: false },
           updatedAt: now,
-        },
+        }),
         { merge: true }
       );
 
@@ -85,27 +87,38 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // 3. Cryptographically set recruiter custom claims
+      // 3. Cryptographically set recruiter custom claims & user doc
       await setUserRole(targetUid, 'recruiter', orgId);
+      await UserRepository.createOrUpdate(targetUid, {
+        email: reqData.workEmail,
+        displayName: reqData.fullName,
+        role: 'recruiter',
+        orgId,
+        status: 'active',
+      });
 
       // 4. Create recruiter profile
-      await adminDb.collection('recruiterProfiles').doc(targetUid).set({
-        id: targetUid,
-        userId: targetUid,
-        orgId,
-        title: reqData.jobTitle,
-        department: 'Talent Acquisition & Engineering Hiring',
-        permissions: ['view_pipeline', 'edit_jobs', 'record_decisions', 'override_evaluations'],
-        createdAt: now,
-      });
+      await adminDb.collection('recruiterProfiles').doc(targetUid).set(
+        sanitizeForFirestore({
+          id: targetUid,
+          userId: targetUid,
+          orgId,
+          title: reqData.jobTitle,
+          department: 'Talent Acquisition & Engineering Hiring',
+          permissions: ['view_pipeline', 'edit_jobs', 'record_decisions', 'override_evaluations'],
+          createdAt: now,
+        })
+      );
 
       // 5. Update request status to approved
-      await docRef.update({
-        status: 'approved',
-        reviewedBy: session.uid,
-        reviewedAt: now,
-        orgId,
-      });
+      await docRef.update(
+        sanitizeForFirestore({
+          status: 'approved',
+          reviewedBy: session.uid,
+          reviewedAt: now,
+          orgId,
+        })
+      );
 
       // 6. Record immutable audit log
       await AuditRepository.recordLog({
@@ -123,11 +136,13 @@ export async function POST(req: NextRequest) {
       });
     } else {
       // Rejection branch
-      await docRef.update({
-        status: 'rejected',
-        reviewedBy: session.uid,
-        reviewedAt: now,
-      });
+      await docRef.update(
+        sanitizeForFirestore({
+          status: 'rejected',
+          reviewedBy: session.uid,
+          reviewedAt: now,
+        })
+      );
 
       await AuditRepository.recordLog({
         actor: `Admin ${session.uid}`,

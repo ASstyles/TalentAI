@@ -1,4 +1,4 @@
-import { BaseRepository } from './base';
+import { BaseRepository, PersistenceError, sanitizeForFirestore } from './base';
 import { JobOpening, JobStatus, SeniorityLevel } from '@/types/job';
 import { MOCK_JOBS, isDemoFixturesEnabled } from '@/lib/data/mock-data';
 import type { Query, QueryDocumentSnapshot } from 'firebase-admin/firestore';
@@ -32,8 +32,15 @@ export class JobRepository extends BaseRepository {
       if (!snap.empty) {
         jobs = snap.docs.map((doc: QueryDocumentSnapshot) => this.sanitizeDoc<JobOpening>(doc));
       }
-    } catch {
-      // In case of read failure, proceed to demo fixtures check
+    } catch (err: unknown) {
+      if (!isDemoFixturesEnabled()) {
+        const errorObj = err as { code?: string; message?: string };
+        throw new PersistenceError(
+          `Failed to list jobs: ${errorObj?.message || 'Database error'}`,
+          errorObj?.code || 'FIRESTORE_READ_ERROR',
+          err
+        );
+      }
     }
 
     if (jobs.length === 0 && isDemoFixturesEnabled()) {
@@ -81,17 +88,27 @@ export class JobRepository extends BaseRepository {
   }
 
   public static async getById(id: string): Promise<JobOpening | null> {
+    if (!id || typeof id !== 'string') return null;
+    const cleanId = id.trim();
+
     try {
-      const doc = await this.db.collection(COLLECTION).doc(id).get();
+      const doc = await this.db.collection(COLLECTION).doc(cleanId).get();
       if (doc.exists) {
         return this.sanitizeDoc<JobOpening>(doc);
       }
-    } catch {
-      // Handled below
+    } catch (err: unknown) {
+      if (!isDemoFixturesEnabled()) {
+        const errorObj = err as { code?: string; message?: string };
+        throw new PersistenceError(
+          `Failed to get job '${cleanId}': ${errorObj?.message || 'Database error'}`,
+          errorObj?.code || 'FIRESTORE_READ_ERROR',
+          err
+        );
+      }
     }
 
     if (isDemoFixturesEnabled()) {
-      return MOCK_JOBS.find((j) => j.id === id) || null;
+      return MOCK_JOBS.find((j) => j.id === cleanId) || null;
     }
     return null;
   }
@@ -106,23 +123,47 @@ export class JobRepository extends BaseRepository {
       updatedAt: now,
     };
 
-    // DEF-012 Remediation: Fail closed. Throw error on Firestore write failure
-    await this.db.collection(COLLECTION).doc(id).set(newJob);
-    return newJob;
+    const sanitized = sanitizeForFirestore(newJob);
+
+    try {
+      await this.db.collection(COLLECTION).doc(id).set(sanitized);
+    } catch (err: unknown) {
+      const errorObj = err as { code?: string; message?: string };
+      throw new PersistenceError(
+        `Failed to create job '${id}': ${errorObj?.message || 'Write error'}`,
+        errorObj?.code || 'FIRESTORE_WRITE_ERROR',
+        err
+      );
+    }
+
+    return sanitized as unknown as JobOpening;
   }
 
   public static async update(id: string, updates: Partial<JobOpening>): Promise<JobOpening> {
+    const cleanId = id.trim();
     const now = new Date().toISOString();
     const cleanUpdates = {
       ...updates,
       updatedAt: now,
     };
-    delete (cleanUpdates as any).id;
-    delete (cleanUpdates as any).createdAt;
+    delete (cleanUpdates as { id?: string }).id;
+    delete (cleanUpdates as { createdAt?: string }).createdAt;
 
-    await this.db.collection(COLLECTION).doc(id).update(cleanUpdates);
-    const updated = await this.getById(id);
-    if (!updated) throw new Error(`Job ${id} not found after update`);
+    const sanitized = sanitizeForFirestore(cleanUpdates);
+
+    try {
+      await this.db.collection(COLLECTION).doc(cleanId).update(sanitized);
+    } catch (err: unknown) {
+      const errorObj = err as { code?: string; message?: string };
+      throw new PersistenceError(
+        `Failed to update job '${cleanId}': ${errorObj?.message || 'Update error'}`,
+        errorObj?.code || 'FIRESTORE_WRITE_ERROR',
+        err
+      );
+    }
+
+    const updated = await this.getById(cleanId);
+    if (!updated) throw new PersistenceError(`Job '${cleanId}' not found after update`, 'NOT_FOUND');
     return updated;
   }
 
@@ -131,7 +172,17 @@ export class JobRepository extends BaseRepository {
   }
 
   public static async delete(id: string): Promise<boolean> {
-    await this.db.collection(COLLECTION).doc(id).delete();
-    return true;
+    const cleanId = id.trim();
+    try {
+      await this.db.collection(COLLECTION).doc(cleanId).delete();
+      return true;
+    } catch (err: unknown) {
+      const errorObj = err as { code?: string; message?: string };
+      throw new PersistenceError(
+        `Failed to delete job '${cleanId}': ${errorObj?.message || 'Delete error'}`,
+        errorObj?.code || 'FIRESTORE_WRITE_ERROR',
+        err
+      );
+    }
   }
 }

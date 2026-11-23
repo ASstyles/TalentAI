@@ -61,11 +61,32 @@ test.describe('TalentAI End-to-End User Journeys', () => {
     await expect(page.getByText(/Active Session Detected/i)).not.toBeVisible();
   });
 
-  test('Login page renders cleanly with candidate portal hint without infinite spinner', async ({ page }) => {
+  test('Login page renders cleanly with candidate portal hint without infinite spinner or Firestore errors', async ({ page }) => {
+    const errorLogs: string[] = [];
+    page.on('console', (msg) => {
+      if (msg.type() === 'error') errorLogs.push(msg.text());
+    });
+    page.on('pageerror', (err) => {
+      errorLogs.push(err.message);
+    });
+
     await page.goto('/login?role=candidate&redirect=%2Fcandidate%2Fresume');
     // Verify no hanging spinner or false active session when unauthenticated
     await expect(page.getByText(/Active Session Detected/i)).not.toBeVisible();
     await expect(page.locator('input[type="email"]')).toBeVisible();
     await expect(page.locator('input[type="password"]')).toBeVisible();
+
+    // Verify absence of Firestore undefined orgId error
+    const firestoreErrors = errorLogs.filter(
+      (log) => log.includes('not a valid Firestore document') || log.includes('orgId')
+    );
+    expect(firestoreErrors).toHaveLength(0);
+  });
+
+  test('Registration page renders with candidate role default and clean validation schema', async ({ page }) => {
+    await page.goto('/register');
+    await expect(page.locator('input[id="fullName"], input[name="fullName"]')).toBeVisible();
+    await expect(page.locator('input[id="email"], input[name="email"]')).toBeVisible();
+    await expect(page.locator('input[id="password"], input[name="password"]')).toBeVisible();
   });
 });

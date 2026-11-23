@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { adminAuth, adminDb } from './admin';
 import { UserRole } from '@/types/user';
+import { sanitizeForFirestore } from './firestore-sanitizer';
 
 export interface DecodedSession {
   uid: string;
@@ -31,18 +32,24 @@ export async function setUserRole(uid: string, role: UserRole, orgId?: string): 
 
   const claims: Record<string, unknown> = {
     role,
-    orgId: role === 'recruiter' ? orgId || null : null,
+    orgId: role === 'recruiter' && orgId ? orgId.trim() : null,
   };
 
   await adminAuth.setCustomUserClaims(uid, claims);
 
-  // Synchronize with the users document in Firestore
+  // Synchronize with the users document in Firestore.
+  // Candidates and Admins NEVER have orgId; Recruiters retain orgId if assigned.
+  const userPayload: Record<string, unknown> = {
+    role,
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (role === 'recruiter' && orgId && orgId.trim()) {
+    userPayload.orgId = orgId.trim();
+  }
+
   await adminDb.collection('users').doc(uid).set(
-    {
-      role,
-      orgId: role === 'recruiter' ? orgId || null : null,
-      updatedAt: new Date().toISOString(),
-    },
+    sanitizeForFirestore(userPayload),
     { merge: true }
   );
 }

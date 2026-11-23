@@ -1,4 +1,4 @@
-import { BaseRepository } from './base';
+import { BaseRepository, PersistenceError, sanitizeForFirestore } from './base';
 import { AuditLogEntry } from '@/lib/services/audit-service';
 import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
@@ -14,9 +14,20 @@ export class AuditRepository extends BaseRepository {
       timestamp,
     };
 
-    // DEF-012: Fail closed. Do not swallow write exceptions.
-    await this.db.collection(COLLECTION).doc(id).set(log);
-    return log;
+    const sanitized = sanitizeForFirestore(log);
+
+    try {
+      await this.db.collection(COLLECTION).doc(id).set(sanitized);
+    } catch (err: unknown) {
+      const errorObj = err as { code?: string; message?: string };
+      throw new PersistenceError(
+        `Failed to record audit log '${id}': ${errorObj?.message || 'Write error'}`,
+        errorObj?.code || 'FIRESTORE_WRITE_ERROR',
+        err
+      );
+    }
+
+    return sanitized as unknown as AuditLogEntry;
   }
 
   public static async getLogs(limitCount: number = 50): Promise<AuditLogEntry[]> {
@@ -48,8 +59,8 @@ export class AuditRepository extends BaseRepository {
         role: 'system',
         action: 'VERIFY_EDUCATION',
         target: 'Candidate: Alex Mercer',
-        details: 'Verified Stanford University B.S. via National Student Clearinghouse API.',
-        timestamp: new Date(Date.now() - 86400000 * 3).toISOString(),
+        details: 'Verified B.S. Computer Science degree with Stanford University credentials registrar.',
+        timestamp: new Date(Date.now() - 3600000 * 5).toISOString(),
       },
     ];
   }

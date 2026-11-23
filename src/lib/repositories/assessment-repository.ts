@@ -1,4 +1,4 @@
-import { BaseRepository } from './base';
+import { BaseRepository, PersistenceError, sanitizeForFirestore } from './base';
 import { CodingAssessment, CodingSubmission, TestCase } from '@/types/coding';
 import { MOCK_CODING_ASSESSMENT, isDemoFixturesEnabled } from '@/lib/data/mock-data';
 import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
@@ -8,17 +8,27 @@ const SUBMISSIONS_COLLECTION = 'codingSubmissions';
 
 export class AssessmentRepository extends BaseRepository {
   public static async getAssessmentById(id: string): Promise<CodingAssessment | null> {
+    if (!id || typeof id !== 'string') return null;
+    const cleanId = id.trim();
+
     try {
-      const doc = await this.db.collection(ASSESSMENTS_COLLECTION).doc(id).get();
+      const doc = await this.db.collection(ASSESSMENTS_COLLECTION).doc(cleanId).get();
       if (doc.exists) {
         return this.sanitizeDoc<CodingAssessment>(doc);
       }
-    } catch {
-      // In case of read failure or offline emulator, check demo fixtures
+    } catch (err: unknown) {
+      if (!isDemoFixturesEnabled()) {
+        const errorObj = err as { code?: string; message?: string };
+        throw new PersistenceError(
+          `Failed to get assessment '${cleanId}': ${errorObj?.message || 'Database error'}`,
+          errorObj?.code || 'FIRESTORE_READ_ERROR',
+          err
+        );
+      }
     }
 
-    if (isDemoFixturesEnabled() && (id === MOCK_CODING_ASSESSMENT.id || id === 'default' || id.startsWith('code-'))) {
-      return { ...MOCK_CODING_ASSESSMENT, id };
+    if (isDemoFixturesEnabled() && (cleanId === MOCK_CODING_ASSESSMENT.id || cleanId === 'default' || cleanId.startsWith('code-'))) {
+      return { ...MOCK_CODING_ASSESSMENT, id: cleanId };
     }
     return null;
   }
@@ -28,11 +38,12 @@ export class AssessmentRepository extends BaseRepository {
    * Prevents candidates from supplying their own synthetic test cases to manufacture passing scores.
    */
   public static async getPrivateTestCases(assessmentId: string): Promise<TestCase[]> {
+    const cleanId = assessmentId.trim();
     try {
       // 1. Check for isolated private test cases subcollection
       const subSnap = await this.db
         .collection(ASSESSMENTS_COLLECTION)
-        .doc(assessmentId)
+        .doc(cleanId)
         .collection('privateTestCases')
         .get();
 
@@ -41,7 +52,7 @@ export class AssessmentRepository extends BaseRepository {
       }
 
       // 2. Fall back to parent assessment document test cases
-      const assessment = await this.getAssessmentById(assessmentId);
+      const assessment = await this.getAssessmentById(cleanId);
       if (assessment && assessment.testCases && assessment.testCases.length > 0) {
         return assessment.testCases;
       }
@@ -78,30 +89,39 @@ export class AssessmentRepository extends BaseRepository {
   }
 
   public static async recordSubmission(submission: CodingSubmission): Promise<CodingSubmission> {
-    await this.db.collection(SUBMISSIONS_COLLECTION).doc(submission.id).set(submission);
-    return submission;
+    const sanitized = sanitizeForFirestore(submission);
+    try {
+      await this.db.collection(SUBMISSIONS_COLLECTION).doc(submission.id).set(sanitized);
+    } catch (err: unknown) {
+      const errorObj = err as { code?: string; message?: string };
+      throw new PersistenceError(
+        `Failed to record coding submission '${submission.id}': ${errorObj?.message || 'Write error'}`,
+        errorObj?.code || 'FIRESTORE_WRITE_ERROR',
+        err
+      );
+    }
+    return sanitized as unknown as CodingSubmission;
   }
 
   public static async getSubmissionsByCandidate(candidateId: string): Promise<CodingSubmission[]> {
     try {
       const snap = await this.db
         .collection(SUBMISSIONS_COLLECTION)
-        .where('candidateId', '==', candidateId)
+        .where('candidateId', '==', candidateId.trim())
         .orderBy('submittedAt', 'desc')
         .get();
 
-      if (!snap.empty) {
-        return snap.docs.map((d: QueryDocumentSnapshot) => this.sanitizeDoc<CodingSubmission>(d));
+      return snap.docs.map((doc: QueryDocumentSnapshot) => this.sanitizeDoc<CodingSubmission>(doc));
+    } catch (err: unknown) {
+      if (!isDemoFixturesEnabled()) {
+        const errorObj = err as { code?: string; message?: string };
+        throw new PersistenceError(
+          `Failed to get candidate submissions: ${errorObj?.message || 'Database error'}`,
+          errorObj?.code || 'FIRESTORE_READ_ERROR',
+          err
+        );
       }
-    } catch {
-      // Fallback below
+      return [];
     }
-
-    if (isDemoFixturesEnabled() && (candidateId === MOCK_CODING_ASSESSMENT.candidateId || candidateId.includes('alex'))) {
-      const { MOCK_CODING_SUBMISSION } = await import('@/lib/data/mock-data');
-      return [{ ...MOCK_CODING_SUBMISSION }];
-    }
-
-    return [];
   }
 }

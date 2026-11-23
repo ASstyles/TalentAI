@@ -20,9 +20,14 @@ services:
       - key: NEXT_TELEMETRY_DISABLED
         value: 1
       - key: ALLOW_LOCAL_SUBPROCESS_SANDBOX
-        value: "true"
+        value: "false"
       - key: NEXT_PUBLIC_DEMO_FIXTURES
         value: "false"
+      # Isolated code execution worker (separately deployed)
+      - key: SANDBOX_WORKER_URL
+        sync: false
+      - key: SANDBOX_WORKER_SECRET
+        sync: false
       # Secure internal Redis connection from Render Key Value service
       - key: REDIS_URL
         fromService:

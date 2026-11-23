@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { adminDb } from '@/lib/firebase/admin';
 import { AuditRepository } from '@/lib/repositories/audit-repository';
 import { rateLimiter } from '@/lib/rate-limit/redis-limiter';
+import { sanitizeForFirestore } from '@/lib/firebase/firestore-sanitizer';
 
 // Block public free webmail providers to enforce genuine corporate work emails
 const BLOCKED_DOMAINS = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'aol.com', 'mail.com'];
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
     };
 
     // Commit to recruiterAccessRequests collection
-    await adminDb.collection('recruiterAccessRequests').doc(requestId).set(requestRecord);
+    await adminDb.collection('recruiterAccessRequests').doc(requestId).set(sanitizeForFirestore(requestRecord));
 
     // Record immutable audit event
     await AuditRepository.recordLog({
