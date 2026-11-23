@@ -1,8 +1,20 @@
 import { adminDb } from '../firebase/admin';
 import type { Firestore, DocumentSnapshot } from 'firebase-admin/firestore';
-import { sanitizeForFirestore, PersistenceError, isFirestoreNative } from '../firebase/firestore-sanitizer';
+import {
+  sanitizeForFirestore,
+  PersistenceError,
+  isFirestoreNative,
+  classifyFirestoreError,
+  type PersistenceErrorCode,
+} from '../firebase/firestore-sanitizer';
 
-export { sanitizeForFirestore, PersistenceError, isFirestoreNative };
+export {
+  sanitizeForFirestore,
+  PersistenceError,
+  isFirestoreNative,
+  classifyFirestoreError,
+  type PersistenceErrorCode,
+};
 
 export interface RepositoryResult<T> {
   success: boolean;

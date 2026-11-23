@@ -3,6 +3,7 @@ import { verifyIdTokenSession, verifyCookieSession, setUserRole, DecodedSession 
 import { adminAuth } from '@/lib/firebase/admin';
 import { UserRepository } from '@/lib/repositories/user-repository';
 import { CandidateRepository } from '@/lib/repositories/candidate-repository';
+import { PersistenceError, classifyFirestoreError } from '@/lib/firebase/firestore-sanitizer';
 
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
@@ -46,12 +47,28 @@ export async function POST(req: NextRequest) {
     try {
       userDoc = await UserRepository.getById(session.uid);
     } catch (dbErr: unknown) {
-      console.error('[SessionRoute] Persistent database failure during user lookup:', dbErr);
+      const errorObj = dbErr instanceof PersistenceError ? dbErr : classifyFirestoreError(dbErr, process.env.FIREBASE_PROJECT_ID);
+      console.error('[SessionRoute] Persistent database failure during user lookup:', {
+        code: errorObj.code,
+        message: errorObj.message,
+        diagnosticHelp: errorObj.diagnosticHelp,
+      });
+
+      const userMessage =
+        errorObj.code === 'FIRESTORE_API_DISABLED'
+          ? 'Database not initialized: Cloud Firestore API is disabled for this project. Please contact administrator.'
+          : errorObj.code === 'FIRESTORE_PERMISSION_DENIED'
+          ? 'Database authorization error: Service account permissions require configuration.'
+          : 'Database unavailable: Unable to verify account permissions. Please retry.';
+
       return NextResponse.json(
         {
           success: false,
-          error: 'Database unavailable: Unable to verify account permissions. Please retry.',
-          code: 'DATABASE_UNAVAILABLE',
+          error: userMessage,
+          code: errorObj.code,
+          ...(process.env.NODE_ENV === 'development' && errorObj.diagnosticHelp
+            ? { diagnosticHelp: errorObj.diagnosticHelp }
+            : {}),
         },
         { status: 503 }
       );

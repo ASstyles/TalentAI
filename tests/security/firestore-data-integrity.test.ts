@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { sanitizeForFirestore, isFirestoreNative, PersistenceError } from '@/lib/firebase/firestore-sanitizer';
+import {
+  sanitizeForFirestore,
+  isFirestoreNative,
+  PersistenceError,
+  classifyFirestoreError,
+} from '@/lib/firebase/firestore-sanitizer';
 import { UserRepository } from '@/lib/repositories/user-repository';
 import { CandidateRepository } from '@/lib/repositories/candidate-repository';
 import { adminDb } from '@/lib/firebase/admin';
@@ -379,6 +384,66 @@ describe('Firestore Data Integrity & orgId Regression Suite', () => {
       expect('githubUsername' in (capturedPayloads[0] as Record<string, unknown>)).toBe(false);
       expect('linkedinUrl' in (capturedPayloads[0] as Record<string, unknown>)).toBe(false);
       expect(() => assertValidFirestoreDocument(capturedPayloads[0])).not.toThrow();
+    });
+  });
+
+  describe('6. Firestore Permission & API Disabled Error Classification', () => {
+    it('classifies gRPC code 7 with disabled message as FIRESTORE_API_DISABLED with console URL', () => {
+      const gRpcError = {
+        code: 7,
+        message:
+          '7 PERMISSION_DENIED: Cloud Firestore API has not been used in project talentai-dba5f before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/firestore.googleapis.com/overview?project=talentai-dba5f then retry.',
+      };
+
+      const err = classifyFirestoreError(gRpcError, 'talentai-dba5f');
+
+      expect(err.code).toBe('FIRESTORE_API_DISABLED');
+      expect(err.message).toContain('Cloud Firestore API is disabled');
+      expect(err.diagnosticHelp).toContain('https://console.developers.google.com/apis/api/firestore.googleapis.com');
+    });
+
+    it('classifies gRPC code 7 without disabled message as FIRESTORE_PERMISSION_DENIED with IAM guidance', () => {
+      const gRpcError = {
+        code: 7,
+        message: '7 PERMISSION_DENIED: Missing or insufficient permissions for service account.',
+      };
+
+      const err = classifyFirestoreError(gRpcError, 'talentai-dba5f');
+
+      expect(err.code).toBe('FIRESTORE_PERMISSION_DENIED');
+      expect(err.diagnosticHelp).toContain('Cloud Datastore User (roles/datastore.user)');
+    });
+
+    it('classifies gRPC code 14 as FIRESTORE_UNAVAILABLE', () => {
+      const gRpcError = {
+        code: 14,
+        message: '14 UNAVAILABLE: Connection reset by peer',
+      };
+
+      const err = classifyFirestoreError(gRpcError, 'talentai-dba5f');
+
+      expect(err.code).toBe('FIRESTORE_UNAVAILABLE');
+    });
+
+    it('re-throws classified PersistenceError during UserRepository.getById when Firestore API is disabled', async () => {
+      const disabledApiError = {
+        code: 7,
+        message: '7 PERMISSION_DENIED: Cloud Firestore API has not been used in project talentai-dba5f before or it is disabled.',
+      };
+
+      vi.spyOn(adminDb, 'collection').mockReturnValue({
+        doc: vi.fn().mockReturnValue({
+          get: vi.fn().mockRejectedValue(disabledApiError),
+        }),
+      } as any);
+
+      try {
+        await UserRepository.getById('cand-test-disabled');
+        expect.fail('Should have thrown PersistenceError');
+      } catch (e: any) {
+        expect(e.code).toBe('FIRESTORE_API_DISABLED');
+        expect(e.message).toContain('Cloud Firestore API is disabled');
+      }
     });
   });
 });
