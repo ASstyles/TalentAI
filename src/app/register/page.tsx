@@ -150,7 +150,21 @@ export default function RegisterPage() {
           {errorMessage && (
             <div className="mb-5 rounded-xl border border-rose-500/40 bg-rose-950/40 p-3.5 text-xs text-rose-300 flex items-start gap-2.5">
               <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5 text-rose-400" />
-              <span>{errorMessage}</span>
+              <div className="space-y-1">
+                <span>{errorMessage}</span>
+                {errorMessage.includes('console.developers.google.com') && (
+                  <div className="pt-1">
+                    <a
+                      href="https://console.developers.google.com/apis/api/firestore.googleapis.com/overview?project=talentai-dba5f"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline font-semibold text-rose-200 hover:text-white"
+                    >
+                      Open Google Cloud Console to Enable Firestore &rarr;
+                    </a>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
