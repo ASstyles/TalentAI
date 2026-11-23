@@ -1,4 +1,4 @@
-import { BaseRepository, PersistenceError, sanitizeForFirestore } from './base';
+import { BaseRepository, PersistenceError, sanitizeForFirestore, classifyFirestoreError } from './base';
 import { User, UserRole, UserStatus } from '@/types/user';
 
 const COLLECTION = 'users';
@@ -7,7 +7,7 @@ export class UserRepository extends BaseRepository {
   /**
    * Retrieves a user by their Firebase UID.
    * Returns null strictly when the document does NOT exist.
-   * Throws a PersistenceError for actual database or network failures.
+   * Throws a typed PersistenceError for actual database, permission, or network failures.
    */
   public static async getById(uid: string): Promise<User | null> {
     if (!uid || typeof uid !== 'string' || !uid.trim()) {
@@ -21,13 +21,13 @@ export class UserRepository extends BaseRepository {
       }
       return null;
     } catch (err: unknown) {
-      const errorObj = err as { code?: string; message?: string };
-      console.error(`[UserRepository.getById] Firestore read failure for UID '${uid}':`, errorObj?.message || err);
-      throw new PersistenceError(
-        `Failed to retrieve user document '${uid}': ${errorObj?.message || 'Database error'}`,
-        errorObj?.code || 'FIRESTORE_READ_ERROR',
-        err
-      );
+      const classified = classifyFirestoreError(err, process.env.FIREBASE_PROJECT_ID);
+      console.error(`[UserRepository.getById] Firestore failure for UID '${uid}':`, {
+        code: classified.code,
+        message: classified.message,
+        diagnosticHelp: classified.diagnosticHelp,
+      });
+      throw classified;
     }
   }
 
@@ -91,13 +91,13 @@ export class UserRepository extends BaseRepository {
     try {
       await this.db.collection(COLLECTION).doc(cleanUid).set(sanitizedPayload, { merge: true });
     } catch (err: unknown) {
-      const errorObj = err as { code?: string; message?: string };
-      console.error(`[UserRepository.createOrUpdate] Firestore write failure for UID '${cleanUid}':`, errorObj?.message || err);
-      throw new PersistenceError(
-        `Failed to persist user document '${cleanUid}': ${errorObj?.message || 'Write error'}`,
-        errorObj?.code || 'FIRESTORE_WRITE_ERROR',
-        err
-      );
+      const classified = classifyFirestoreError(err, process.env.FIREBASE_PROJECT_ID);
+      console.error(`[UserRepository.createOrUpdate] Firestore write failure for UID '${cleanUid}':`, {
+        code: classified.code,
+        message: classified.message,
+        diagnosticHelp: classified.diagnosticHelp,
+      });
+      throw classified;
     }
 
     return sanitizedPayload as unknown as User;

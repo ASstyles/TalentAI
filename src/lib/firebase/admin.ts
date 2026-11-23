@@ -32,15 +32,25 @@ function initializeAdminApp(): AdminApp {
     process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
     (projectId ? `${projectId}.firebasestorage.app` : undefined);
 
-  // Normalize private key if escaped newlines were provided
-  const privateKey = rawPrivateKey ? rawPrivateKey.replace(/\\n/g, '\n') : undefined;
+  // Normalize private key if escaped newlines or enclosing quotes were provided
+  let privateKey: string | undefined = undefined;
+  if (rawPrivateKey) {
+    let cleanKey = rawPrivateKey.trim();
+    if (
+      (cleanKey.startsWith('"') && cleanKey.endsWith('"')) ||
+      (cleanKey.startsWith("'") && cleanKey.endsWith("'"))
+    ) {
+      cleanKey = cleanKey.slice(1, -1);
+    }
+    privateKey = cleanKey.replace(/\\n/g, '\n');
+  }
 
   // Case 1: Service Account Credentials explicitly provided
   if (clientEmail && privateKey && projectId) {
     return initializeApp({
       credential: cert({
-        projectId,
-        clientEmail,
+        projectId: projectId.trim(),
+        clientEmail: clientEmail.trim(),
         privateKey,
       }),
       storageBucket,
