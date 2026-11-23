@@ -366,6 +366,7 @@ describe('Candidate & Recruiter Authentication Gateway & Zero-Trust Governance',
         role: 'recruiter',
         orgId: 'org-google-deepmind',
       } as any);
+      vi.spyOn(adminAuth, 'createSessionCookie').mockResolvedValueOnce('mock-session-cookie-value');
 
       const req = new NextRequest('http://localhost:3000/api/auth/session', {
         method: 'POST',

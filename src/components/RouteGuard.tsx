@@ -16,7 +16,7 @@ interface RouteGuardProps {
 export default function RouteGuard({ children, allowedRoles, portalName }: RouteGuardProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, role, loading } = useAuth();
+  const { user, role, loading, sessionReady } = useAuth();
 
   // If public route like /recruiter/access-request, bypass guard
   if (pathname === '/recruiter/access-request') {
@@ -35,8 +35,8 @@ export default function RouteGuard({ children, allowedRoles, portalName }: Route
     );
   }
 
-  // Unauthenticated user
-  if (!user) {
+  // Unauthenticated user or unverified session
+  if (!user || !sessionReady) {
     return (
       <div className="min-h-[calc(100vh-12rem)] flex items-center justify-center px-4">
         <div className="max-w-md w-full rounded-3xl border border-slate-800 bg-slate-900/80 p-8 text-center space-y-5 shadow-2xl backdrop-blur-xl">

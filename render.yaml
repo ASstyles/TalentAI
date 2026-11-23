@@ -1,4 +1,5 @@
 services:
+  # TalentAI Web Application Docker Service
   - type: web
     name: talentai
     runtime: docker
@@ -22,10 +23,13 @@ services:
         value: "true"
       - key: NEXT_PUBLIC_DEMO_FIXTURES
         value: "false"
+      # Secure internal Redis connection from Render Key Value service
       - key: REDIS_URL
-        sync: false
-      - key: REDIS_PASSWORD
-        sync: false
+        fromService:
+          type: keyvalue
+          name: talentai-redis
+          property: connectionString
+      # Sensitive credentials managed in Render Dashboard (Environment Groups / Secrets)
       - key: GEMINI_API_KEY
         sync: false
       - key: FIREBASE_PROJECT_ID
@@ -34,3 +38,23 @@ services:
         sync: false
       - key: FIREBASE_PRIVATE_KEY
         sync: false
+      # Public Firebase configuration (Render auto-injects service env as Docker build arguments)
+      - key: NEXT_PUBLIC_FIREBASE_API_KEY
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+        sync: false
+      - key: NEXT_PUBLIC_FIREBASE_APP_ID
+        sync: false
+
+  # Render Key Value (Redis-compatible) Managed Service
+  - type: keyvalue
+    name: talentai-redis
+    plan: free
+    region: oregon
+    ipAllowList: [] # Strict private access only within the Render private network

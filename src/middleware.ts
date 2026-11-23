@@ -3,6 +3,11 @@ import { NextRequest, NextResponse } from 'next/server';
 // Public routes that never require authentication
 const PUBLIC_PATHS = ['/', '/login', '/register', '/forgot-password', '/recruiter/access-request'];
 
+/**
+ * Fast navigation hint extraction for Edge middleware.
+ * NOTE: Unverified JWT claims are used ONLY for optimistic navigation routing.
+ * Authoritative cryptographic security is enforced in Server APIs and RouteGuard.
+ */
 function parseJwtClaims(token: string): { role?: string; exp?: number } | null {
   try {
     const parts = token.split('.');
@@ -30,7 +35,7 @@ export function middleware(req: NextRequest) {
 
   const sessionCookie = req.cookies.get('session')?.value;
 
-  // If already authenticated and visiting login or register, redirect to appropriate workspace (fixes DEF-009 / screenshot bug)
+  // If already authenticated and visiting login or register, redirect to appropriate workspace
   if ((pathname === '/login' || pathname === '/register') && sessionCookie) {
     const claims = parseJwtClaims(sessionCookie);
     const isExpired = claims?.exp ? claims.exp * 1000 < Date.now() : true;
@@ -58,6 +63,11 @@ export function middleware(req: NextRequest) {
       }
 
       return NextResponse.redirect(new URL(destination, req.url));
+    } else {
+      // Stale or expired cookie on login page: clear it immediately
+      const res = NextResponse.next();
+      res.cookies.delete('session');
+      return res;
     }
   }
 
@@ -96,7 +106,9 @@ export function middleware(req: NextRequest) {
 
     if (isExpired) {
       const loginUrl = new URL('/login', req.url);
-      return NextResponse.redirect(loginUrl);
+      const res = NextResponse.redirect(loginUrl);
+      res.cookies.delete('session');
+      return res;
     }
 
     const role = claims?.role;
