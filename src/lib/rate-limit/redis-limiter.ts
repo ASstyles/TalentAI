@@ -117,6 +117,21 @@ class DistributedRateLimiter {
       }
     }
 
+    // Fail-Closed Enforcement: If the policy explicitly requires fail-closed behavior
+    // and Redis is either configured but currently unreachable, or running in production without Redis
+    if (
+      policy.failClosed &&
+      !this.redisAvailable &&
+      (this.redis !== null || process.env.NODE_ENV === 'production')
+    ) {
+      return {
+        allowed: false,
+        limit: policy.maxRequests,
+        remaining: 0,
+        resetTime: now + policy.windowSeconds,
+      };
+    }
+
     // Path B: In-Memory Fallback (Local Development & Test Environments)
     const entry = this.inMemoryFallback.get(key);
     if (!entry || now > entry.resetTime) {

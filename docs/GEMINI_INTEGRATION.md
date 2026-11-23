@@ -16,10 +16,10 @@ The platform defines four centrally configurable model tiers managed via environ
 
 | Tier | Environment Variable | Default Model Identifier | Workload Purpose |
 | :--- | :--- | :--- | :--- |
-| **Primary** | `GEMINI_MODEL_PRIMARY` | `gemini-4-neon` | Core recruitment intelligence and multi-modal candidate reasoning |
-| **Reasoning** | `GEMINI_MODEL_REASONING` | `gemini-4-carbon` | Complex architecture evaluation, rubric extraction, and synthesis |
-| **Fast** | `GEMINI_MODEL_FAST` | `gemini-4-hydrogen` | Low-latency adaptive interview turns and conversational follow-ups |
-| **Fallback** | `GEMINI_MODEL_FALLBACK` | `gemini-3.8-flash` | Resilient fallback tier for standard structured extractions |
+| **Primary** | `GEMINI_MODEL_PRIMARY` | `gemini-2.5-flash` | Core recruitment intelligence and multi-modal candidate reasoning |
+| **Reasoning** | `GEMINI_MODEL_REASONING` | `gemini-2.5-pro` | Complex architecture evaluation, rubric extraction, and synthesis |
+| **Fast** | `GEMINI_MODEL_FAST` | `gemini-2.0-flash` | Low-latency adaptive interview turns and conversational follow-ups |
+| **Fallback** | `GEMINI_MODEL_FALLBACK` | `gemini-1.5-flash` | Resilient fallback tier for standard structured extractions |
 
 ---
 

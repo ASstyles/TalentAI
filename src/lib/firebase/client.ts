@@ -23,10 +23,41 @@ const REQUIRED_CONFIG_KEYS = [
   'appId',
 ] as const;
 
+let runtimeConfigOverride: Partial<FirebaseClientConfig> | null = null;
+
+export function setRuntimeFirebaseConfig(config: Partial<FirebaseClientConfig>): void {
+  runtimeConfigOverride = config;
+  resetFirebaseClientInstances();
+}
+
+export async function loadRuntimeFirebaseConfig(): Promise<FirebaseClientConfig | null> {
+  if (isFirebaseConfigured()) {
+    return getFirebaseClientConfig() as FirebaseClientConfig;
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/config/public');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.data && json.data.apiKey && json.data.projectId) {
+          setRuntimeFirebaseConfig(json.data);
+          return json.data as FirebaseClientConfig;
+        }
+      }
+    } catch {
+      // Ignore network failures gracefully
+    }
+  }
+  return null;
+}
+
 /**
  * Returns raw public Firebase configuration extracted from environment variables.
  */
 export function getFirebaseClientConfig(): Partial<FirebaseClientConfig> {
+  if (runtimeConfigOverride) {
+    return runtimeConfigOverride;
+  }
   return {
     apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
     authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,

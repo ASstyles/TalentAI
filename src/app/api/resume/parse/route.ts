@@ -3,6 +3,7 @@ import { parseResumeWithGemini } from '@/lib/gemini/services/resume-analysis';
 import { GeminiClient } from '@/lib/gemini/client';
 import { authorizeRequest } from '@/lib/firebase/auth';
 import { rateLimiter } from '@/lib/rate-limit/redis-limiter';
+import { extractDocumentText } from '@/lib/resume/parser';
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,10 +24,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { rawText } = await req.json();
+    const body = await req.json();
+    let rawText = body.rawText;
+
+    // Support base64 encoded document buffer if provided
+    if ((!rawText || typeof rawText !== 'string') && body.documentBase64) {
+      const buffer = Buffer.from(body.documentBase64, 'base64');
+      const ext = typeof body.extension === 'string' ? body.extension : 'pdf';
+      rawText = await extractDocumentText(buffer, ext);
+    }
+
     if (!rawText || typeof rawText !== 'string' || rawText.trim().length === 0) {
       return NextResponse.json(
-        { error: 'Missing or empty rawText parameter. Please provide genuine resume text.' },
+        { error: 'Missing or empty rawText parameter. Please provide genuine resume text or documentBase64.' },
         { status: 400 }
       );
     }
