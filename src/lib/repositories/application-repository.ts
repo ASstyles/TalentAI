@@ -1,4 +1,4 @@
-import { BaseRepository } from './base';
+import { BaseRepository, PersistenceError, sanitizeForFirestore } from './base';
 import { JobApplication, ApplicationStatus } from '@/types/application';
 import { MOCK_APPLICATIONS, isDemoFixturesEnabled } from '@/lib/data/mock-data';
 import type { Query, QueryDocumentSnapshot } from 'firebase-admin/firestore';
@@ -23,8 +23,15 @@ export class ApplicationRepository extends BaseRepository {
       if (!snap.empty) {
         return snap.docs.map((doc: QueryDocumentSnapshot) => this.sanitizeDoc<JobApplication>(doc));
       }
-    } catch {
-      // In case of read failure, check demo fixtures
+    } catch (err: unknown) {
+      if (!isDemoFixturesEnabled()) {
+        const errorObj = err as { code?: string; message?: string };
+        throw new PersistenceError(
+          `Failed to list applications: ${errorObj?.message || 'Database error'}`,
+          errorObj?.code || 'FIRESTORE_READ_ERROR',
+          err
+        );
+      }
     }
 
     if (isDemoFixturesEnabled()) {
@@ -40,17 +47,27 @@ export class ApplicationRepository extends BaseRepository {
   }
 
   public static async getById(id: string): Promise<JobApplication | null> {
+    if (!id || typeof id !== 'string') return null;
+    const cleanId = id.trim();
+
     try {
-      const doc = await this.db.collection(COLLECTION).doc(id).get();
+      const doc = await this.db.collection(COLLECTION).doc(cleanId).get();
       if (doc.exists) {
         return this.sanitizeDoc<JobApplication>(doc);
       }
-    } catch {
-      // Handled below
+    } catch (err: unknown) {
+      if (!isDemoFixturesEnabled()) {
+        const errorObj = err as { code?: string; message?: string };
+        throw new PersistenceError(
+          `Failed to get application '${cleanId}': ${errorObj?.message || 'Database error'}`,
+          errorObj?.code || 'FIRESTORE_READ_ERROR',
+          err
+        );
+      }
     }
 
     if (isDemoFixturesEnabled()) {
-      return MOCK_APPLICATIONS.find((a) => a.id === id) || null;
+      return MOCK_APPLICATIONS.find((a) => a.id === cleanId) || null;
     }
     return null;
   }
@@ -80,19 +97,43 @@ export class ApplicationRepository extends BaseRepository {
       updatedAt: now,
     };
 
-    // DEF-012 Remediation: Fail closed. Throw error on Firestore write failure
-    await this.db.collection(COLLECTION).doc(id).set(newApp);
-    return newApp;
+    const sanitized = sanitizeForFirestore(newApp);
+
+    try {
+      await this.db.collection(COLLECTION).doc(id).set(sanitized);
+    } catch (err: unknown) {
+      const errorObj = err as { code?: string; message?: string };
+      throw new PersistenceError(
+        `Failed to create application '${id}': ${errorObj?.message || 'Write error'}`,
+        errorObj?.code || 'FIRESTORE_WRITE_ERROR',
+        err
+      );
+    }
+
+    return sanitized as unknown as JobApplication;
   }
 
   public static async updateStatus(id: string, status: ApplicationStatus): Promise<JobApplication> {
+    const cleanId = id.trim();
     const now = new Date().toISOString();
-    await this.db.collection(COLLECTION).doc(id).update({
+    const updates = sanitizeForFirestore({
       status,
       updatedAt: now,
     });
-    const updated = await this.getById(id);
-    if (!updated) throw new Error(`Application ${id} not found`);
+
+    try {
+      await this.db.collection(COLLECTION).doc(cleanId).update(updates);
+    } catch (err: unknown) {
+      const errorObj = err as { code?: string; message?: string };
+      throw new PersistenceError(
+        `Failed to update application status '${cleanId}': ${errorObj?.message || 'Update error'}`,
+        errorObj?.code || 'FIRESTORE_WRITE_ERROR',
+        err
+      );
+    }
+
+    const updated = await this.getById(cleanId);
+    if (!updated) throw new PersistenceError(`Application '${cleanId}' not found after update`, 'NOT_FOUND');
     return updated;
   }
 }

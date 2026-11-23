@@ -4,6 +4,7 @@ import { calculateCompetencyProfile } from '@/lib/competency/scoring';
 import { matchCandidateToRoles } from '@/lib/matching/role-matcher';
 import { authorizeRequest } from '@/lib/firebase/auth';
 import { adminDb } from '@/lib/firebase/admin';
+import { sanitizeForFirestore } from '@/lib/firebase/firestore-sanitizer';
 import { CandidateRepository } from '@/lib/repositories/candidate-repository';
 import { AssessmentRepository } from '@/lib/repositories/assessment-repository';
 import { isDemoFixturesEnabled } from '@/lib/data/mock-data';
@@ -172,15 +173,17 @@ export async function POST(req: NextRequest) {
     // Persist recommendation record for audit & historical tracking
     try {
       const recId = `rec-${targetCandidateId}-${Date.now()}`;
-      await adminDb.collection('roleRecommendations').doc(recId).set({
-        id: recId,
-        candidateId: targetCandidateId,
-        primaryRole: recommendations.primaryRecommendation.role,
-        primaryScore: recommendations.primaryRecommendation.compatibilityScore,
-        alternativeCount: recommendations.alternativeRecommendations.length,
-        recommendations,
-        generatedAt: new Date().toISOString(),
-      });
+      await adminDb.collection('roleRecommendations').doc(recId).set(
+        sanitizeForFirestore({
+          id: recId,
+          candidateId: targetCandidateId,
+          primaryRole: recommendations.primaryRecommendation.role,
+          primaryScore: recommendations.primaryRecommendation.compatibilityScore,
+          alternativeCount: recommendations.alternativeRecommendations.length,
+          recommendations,
+          generatedAt: new Date().toISOString(),
+        })
+      );
     } catch (saveErr) {
       console.warn('[MatchingRecommendation] Non-fatal recommendation persistence warning:', saveErr);
     }

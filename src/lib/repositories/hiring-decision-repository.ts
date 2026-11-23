@@ -1,4 +1,4 @@
-import { BaseRepository } from './base';
+import { BaseRepository, PersistenceError, sanitizeForFirestore } from './base';
 import { RecruiterDecision } from '@/types/hiring';
 import { AuditRepository } from './audit-repository';
 import type { Transaction } from 'firebase-admin/firestore';
@@ -51,26 +51,40 @@ export class HiringDecisionRepository extends BaseRepository {
     const decisionRef = this.db.collection(COLLECTION).doc(id);
     const appRef = this.db.collection('jobApplications').doc(params.applicationId);
 
-    await this.db.runTransaction(async (transaction: Transaction) => {
-      const appDoc = await transaction.get(appRef);
-      const nextStatus =
-        params.decision === 'advance_to_offer'
-          ? 'offered'
-          : params.decision === 'reject'
-          ? 'rejected'
-          : params.decision === 'schedule_panel'
-          ? 'interviewing'
-          : 'review';
+    const sanitizedRecord = sanitizeForFirestore(record);
 
-      transaction.set(decisionRef, record);
-      if (appDoc.exists) {
-        transaction.update(appRef, {
-          status: nextStatus,
-          hiringRecommendationId: id,
-          updatedAt: timestamp,
-        });
-      }
-    });
+    try {
+      await this.db.runTransaction(async (transaction: Transaction) => {
+        const appDoc = await transaction.get(appRef);
+        const nextStatus =
+          params.decision === 'advance_to_offer'
+            ? 'offered'
+            : params.decision === 'reject'
+            ? 'rejected'
+            : params.decision === 'schedule_panel'
+            ? 'interviewing'
+            : 'review';
+
+        transaction.set(decisionRef, sanitizedRecord);
+        if (appDoc.exists) {
+          transaction.update(
+            appRef,
+            sanitizeForFirestore({
+              status: nextStatus,
+              hiringRecommendationId: id,
+              updatedAt: timestamp,
+            })
+          );
+        }
+      });
+    } catch (err: unknown) {
+      const errorObj = err as { code?: string; message?: string };
+      throw new PersistenceError(
+        `Failed to record hiring decision transaction: ${errorObj?.message || 'Transaction error'}`,
+        errorObj?.code || 'FIRESTORE_WRITE_ERROR',
+        err
+      );
+    }
 
     // 2. Commit immutable audit log
     await AuditRepository.recordLog({

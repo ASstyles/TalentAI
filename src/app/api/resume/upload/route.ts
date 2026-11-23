@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authorizeRequest } from '@/lib/firebase/auth';
-import { adminStorage, adminDb } from '@/lib/firebase/admin';
+import { adminStorage } from '@/lib/firebase/admin';
+import { CandidateRepository } from '@/lib/repositories/candidate-repository';
 import { parseResumeWithGemini } from '@/lib/gemini/services/resume-analysis';
 import { GeminiClient } from '@/lib/gemini/client';
 import { rateLimiter } from '@/lib/rate-limit/redis-limiter';
@@ -92,21 +93,13 @@ export async function POST(req: NextRequest) {
         try {
           parsedData = await parseResumeWithGemini(extractedText);
 
-          // Automatically sync extracted skills and info into candidate profile
+          // Automatically sync extracted skills and info into candidate profile safely
           if (parsedData) {
-            const profileRef = adminDb.collection('candidateProfiles').doc(session.uid);
-            await profileRef.set(
-              {
-                id: session.uid,
-                userId: session.uid,
-                headline: parsedData.summary ? parsedData.summary.substring(0, 120) : 'Software Engineer',
-                summary: parsedData.summary,
-                extractedSkills: parsedData.skills,
-                parsedResumeId: storagePath,
-                updatedAt: new Date().toISOString(),
-              },
-              { merge: true }
-            );
+            await CandidateRepository.saveProfile(session.uid, {
+              headline: parsedData.summary ? parsedData.summary.substring(0, 120) : 'Software Engineer',
+              summary: parsedData.summary || '',
+              updatedAt: new Date().toISOString(),
+            });
           }
         } catch (aiErr) {
           console.warn('[ResumeUpload] Auto-parse warning:', aiErr);

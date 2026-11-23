@@ -40,8 +40,22 @@ export async function POST(req: NextRequest) {
     }
 
     // Retrieve user record from persistent Firestore
-    let userDoc = await UserRepository.getById(session.uid);
+    let userDoc: Awaited<ReturnType<typeof UserRepository.getById>> = null;
     let claimsAssigned = false;
+
+    try {
+      userDoc = await UserRepository.getById(session.uid);
+    } catch (dbErr: unknown) {
+      console.error('[SessionRoute] Persistent database failure during user lookup:', dbErr);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Database unavailable: Unable to verify account permissions. Please retry.',
+          code: 'DATABASE_UNAVAILABLE',
+        },
+        { status: 503 }
+      );
+    }
 
     // Phase 1 Problem D Fix: Explicit trusted candidate provisioning for eligible new accounts
     if (!userDoc) {
@@ -64,13 +78,18 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      userDoc = await UserRepository.createOrUpdate(session.uid, {
+      const newUserData: { email: string; displayName: string; role: typeof roleToAssign; status: 'active'; orgId?: string } = {
         email: session.email || '',
         displayName,
         role: roleToAssign,
         status: 'active',
-        orgId: session.orgId,
-      });
+      };
+
+      if (roleToAssign === 'recruiter' && session.orgId) {
+        newUserData.orgId = session.orgId;
+      }
+
+      userDoc = await UserRepository.createOrUpdate(session.uid, newUserData);
 
       if (roleToAssign === 'candidate') {
         await CandidateRepository.saveProfile(session.uid, {
@@ -86,7 +105,7 @@ export async function POST(req: NextRequest) {
         try {
           await adminAuth.setCustomUserClaims(session.uid, {
             role: userDoc.role,
-            orgId: userDoc.orgId || null,
+            orgId: userDoc.role === 'recruiter' && userDoc.orgId ? userDoc.orgId : null,
           });
           claimsAssigned = true;
         } catch (claimsErr) {

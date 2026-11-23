@@ -170,6 +170,8 @@ export default function RegisterPage() {
                   <User className="h-4 w-4" />
                 </div>
                 <input
+                  id="fullName"
+                  name="fullName"
                   type="text"
                   required
                   value={fullName}
@@ -188,6 +190,8 @@ export default function RegisterPage() {
                   <Mail className="h-4 w-4" />
                 </div>
                 <input
+                  id="email"
+                  name="email"
                   type="email"
                   required
                   value={email}
@@ -206,6 +210,8 @@ export default function RegisterPage() {
                   <Lock className="h-4 w-4" />
                 </div>
                 <input
+                  id="password"
+                  name="password"
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
