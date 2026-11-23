@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -28,7 +28,7 @@ function LoginFormContent() {
   const roleParam = searchParams.get('role') as 'candidate' | 'recruiter' | null;
   const redirectParam = searchParams.get('redirect') || null;
 
-  const { loginWithEmail, loginWithGoogle, user, role, loading: authLoading } = useAuth();
+  const { loginWithEmail, loginWithGoogle, user, role, loading: authLoading, sessionReady, authError } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -41,41 +41,57 @@ function LoginFormContent() {
     intendedRole: 'candidate' | 'recruiter';
   } | null>(null);
 
-  // If already authenticated and no role mismatch, redirect to dashboard
+  const getDestination = useCallback((targetRole: UserRole): string => {
+    const cleanRedirect =
+      redirectParam &&
+      redirectParam.startsWith('/') &&
+      !redirectParam.startsWith('//') &&
+      !redirectParam.startsWith('/login') &&
+      !redirectParam.startsWith('/register')
+        ? redirectParam
+        : null;
+
+    return (
+      cleanRedirect ||
+      (targetRole === 'admin'
+        ? '/admin/dashboard'
+        : targetRole === 'recruiter'
+        ? '/recruiter/dashboard'
+        : '/candidate/dashboard')
+    );
+  }, [redirectParam]);
+
+  // If already authenticated and verified by backend session, redirect immediately
   useEffect(() => {
-    if (!authLoading && user && role && !wrongRoleNotice) {
+    if (!authLoading && sessionReady && user && role && !wrongRoleNotice) {
       if (roleParam === 'recruiter' && role === 'candidate') {
         setWrongRoleNotice({ detectedRole: 'candidate', intendedRole: 'recruiter' });
       } else if (roleParam === 'candidate' && role === 'recruiter') {
         // Recruiter logging in through candidate portal - offer quick switch
         setWrongRoleNotice({ detectedRole: 'recruiter', intendedRole: 'candidate' });
       } else {
-        const cleanRedirect =
-          redirectParam &&
-          redirectParam.startsWith('/') &&
-          !redirectParam.startsWith('//') &&
-          !redirectParam.startsWith('/login') &&
-          !redirectParam.startsWith('/register')
-            ? redirectParam
-            : null;
-
-        const destination =
-          cleanRedirect ||
-          (role === 'admin'
-            ? '/admin/dashboard'
-            : role === 'recruiter'
-            ? '/recruiter/dashboard'
-            : '/candidate/dashboard');
-
+        const destination = getDestination(role);
         router.replace(destination);
+
+        // Bounded Watchdog (1500ms): If Next.js client router does not navigate away,
+        // perform hard fallback with window.location.replace to guarantee arrival
+        const watchdog = setTimeout(() => {
+          if (typeof window !== 'undefined' && window.location.pathname.startsWith('/login')) {
+            console.warn('[Login] Client router watchdog triggered hard navigation to:', destination);
+            window.location.replace(destination);
+          }
+        }, 1500);
+
+        return () => clearTimeout(watchdog);
       }
     }
-  }, [user, role, authLoading, roleParam, redirectParam, router, wrongRoleNotice]);
+  }, [user, role, authLoading, sessionReady, roleParam, router, wrongRoleNotice, getDestination]);
 
   // If already authenticated with eligible role, prevent login form render and show smooth redirect state
-  if (!authLoading && user && role && !wrongRoleNotice) {
+  if (!authLoading && sessionReady && user && role && !wrongRoleNotice) {
     const isMatchingRole = !roleParam || roleParam === role || (role === 'admin');
     if (isMatchingRole) {
+      const destination = getDestination(role);
       return (
         <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center px-4">
           <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-8 text-center max-w-sm space-y-4 shadow-2xl backdrop-blur-md">
@@ -91,6 +107,14 @@ function LoginFormContent() {
             <div className="flex items-center justify-center gap-2 text-xs text-indigo-400 font-medium">
               <span className="h-3 w-3 animate-spin rounded-full border-2 border-indigo-400 border-t-transparent" />
               <span>Redirecting to your workspace...</span>
+            </div>
+            <div className="pt-2">
+              <a
+                href={destination}
+                className="text-[11px] text-slate-400 hover:text-white underline transition-colors"
+              >
+                Click here if not redirected automatically
+              </a>
             </div>
           </div>
         </div>
@@ -132,15 +156,15 @@ function LoginFormContent() {
         return;
       }
 
-      // Successful portal matching: redirect to target dashboard
-      const destination =
-        redirectParam ||
-        (verifiedRole === 'admin'
-          ? '/admin/dashboard'
-          : verifiedRole === 'recruiter'
-          ? '/recruiter/dashboard'
-          : '/candidate/dashboard');
-      router.push(destination);
+      // Successful portal matching: redirect to target dashboard or requested redirectParam
+      const destination = getDestination(verifiedRole);
+      router.replace(destination);
+
+      setTimeout(() => {
+        if (typeof window !== 'undefined' && window.location.pathname.startsWith('/login')) {
+          window.location.replace(destination);
+        }
+      }, 1500);
     } catch (err: unknown) {
       setErrorMessage(err instanceof Error ? err.message : 'An unexpected authentication error occurred.');
       setIsSubmitting(false);
@@ -168,14 +192,20 @@ function LoginFormContent() {
         return;
       }
 
-      const destination =
-        redirectParam ||
-        (verifiedRole === 'admin'
-          ? '/admin/dashboard'
-          : verifiedRole === 'recruiter'
-          ? '/recruiter/dashboard'
-          : '/candidate/dashboard');
-      router.push(destination);
+      if (roleParam === 'candidate' && verifiedRole === 'recruiter') {
+        setWrongRoleNotice({ detectedRole: 'recruiter', intendedRole: 'candidate' });
+        setIsSubmitting(false);
+        return;
+      }
+
+      const destination = getDestination(verifiedRole);
+      router.replace(destination);
+
+      setTimeout(() => {
+        if (typeof window !== 'undefined' && window.location.pathname.startsWith('/login')) {
+          window.location.replace(destination);
+        }
+      }, 1500);
     } catch (err: unknown) {
       setErrorMessage(err instanceof Error ? err.message : 'Google authentication failed.');
       setIsSubmitting(false);

@@ -5,6 +5,7 @@ import { UserRepository } from '@/lib/repositories/user-repository';
 import { CandidateRepository } from '@/lib/repositories/candidate-repository';
 
 export async function POST(req: NextRequest) {
+  const startTime = Date.now();
   try {
     const authHeader = req.headers.get('authorization');
     let idToken = authHeader?.startsWith('Bearer ') ? authHeader.split('Bearer ')[1].trim() : null;
@@ -14,57 +15,88 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
         idToken = body.idToken || null;
       } catch {
-        // Fallback to cookie check
+        // Fallback to checking session cookie
       }
     }
 
     const sessionCookie = req.cookies.get('session')?.value || null;
 
     if (!idToken && !sessionCookie) {
-      return NextResponse.json({ error: 'Missing authentication token' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Missing authentication token or session cookie' },
+        { status: 401 }
+      );
     }
 
-    // Cryptographic verification: verify ID token if provided; otherwise verify session cookie
     let session: DecodedSession;
+    let verifiedVia: 'id_token' | 'session_cookie' = 'id_token';
+
     if (idToken) {
       session = await verifyIdTokenSession(idToken);
+      verifiedVia = 'id_token';
     } else {
       session = await verifyCookieSession(sessionCookie!);
+      verifiedVia = 'session_cookie';
     }
 
-    // Retrieve user record from Firestore
+    // Retrieve user record from persistent Firestore
     let userDoc = await UserRepository.getById(session.uid);
+    let claimsAssigned = false;
 
-    // If user has no custom claim role yet (e.g. initial Google sign-in), provision candidate role
-    let effectiveRole = session.role;
-    if (!effectiveRole || (effectiveRole !== 'candidate' && effectiveRole !== 'recruiter' && effectiveRole !== 'admin')) {
-      effectiveRole = 'candidate';
-      await setUserRole(session.uid, 'candidate');
-      await CandidateRepository.saveProfile(session.uid, {
-        headline: 'Software Engineer',
-        summary: '',
-        yearsOfExperience: 0,
-        overallVerificationScore: 0,
-      });
-    }
-
+    // Phase 1 Problem D Fix: Explicit trusted candidate provisioning for eligible new accounts
     if (!userDoc) {
       let displayName = session.email?.split('@')[0] || 'User';
       try {
         const authUser = await adminAuth.getUser(session.uid);
         if (authUser.displayName) displayName = authUser.displayName;
       } catch {
-        // Fallback to email username if getUser is offline or mocked
+        // Fallback to email username if getUser is offline or mock emulator
+      }
+
+      // If token already has verified recruiter or admin claims, preserve it; otherwise provision candidate
+      const roleToAssign = (session.role === 'recruiter' || session.role === 'admin') ? session.role : 'candidate';
+      if (!session.role) {
+        try {
+          await setUserRole(session.uid, 'candidate');
+          claimsAssigned = true;
+        } catch (claimsErr) {
+          console.warn('[SessionRoute] setUserRole warning (offline emulator/mock):', claimsErr);
+        }
       }
 
       userDoc = await UserRepository.createOrUpdate(session.uid, {
         email: session.email || '',
         displayName,
-        role: effectiveRole,
+        role: roleToAssign,
         status: 'active',
         orgId: session.orgId,
       });
+
+      if (roleToAssign === 'candidate') {
+        await CandidateRepository.saveProfile(session.uid, {
+          headline: 'Software Engineer',
+          summary: '',
+          yearsOfExperience: 0,
+          overallVerificationScore: 0,
+        }).catch(() => null);
+      }
+    } else {
+      // Existing accounts: NEVER silently upgrade. Reconcile claims if divergent.
+      if (session.role !== userDoc.role) {
+        try {
+          await adminAuth.setCustomUserClaims(session.uid, {
+            role: userDoc.role,
+            orgId: userDoc.orgId || null,
+          });
+          claimsAssigned = true;
+        } catch (claimsErr) {
+          console.warn('[SessionRoute] setCustomUserClaims warning:', claimsErr);
+        }
+      }
     }
+
+    const effectiveRole = userDoc.role;
+    const effectiveOrgId = userDoc.orgId || null;
 
     const response = NextResponse.json({
       success: true,
@@ -73,32 +105,48 @@ export async function POST(req: NextRequest) {
         email: session.email || userDoc.email,
         displayName: userDoc.displayName,
         role: effectiveRole,
-        orgId: session.orgId || userDoc.orgId || null,
+        orgId: effectiveOrgId,
       },
+      claimsAssigned,
+      verifiedVia,
     });
 
-    // Generate genuine Firebase Session Cookie if ID token was supplied
+    // Generate genuine Firebase Session Cookie ONLY when ID token was supplied
     if (idToken) {
-      const expiresInMs = 60 * 60 * 24 * 7 * 1000; // 7 days
-      let cookieValue = idToken;
+      const expiresInMs = 60 * 60 * 24 * 7 * 1000; // 7 days in milliseconds
       try {
-        cookieValue = await adminAuth.createSessionCookie(idToken, { expiresIn: expiresInMs });
-      } catch {
-        // In local/emulator tests, retain idToken if createSessionCookie is not supported
-      }
+        const cookieValue = await adminAuth.createSessionCookie(idToken, { expiresIn: expiresInMs });
 
-      response.cookies.set('session', cookieValue, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 60 * 60 * 24 * 7,
-      });
+        response.cookies.set('session', cookieValue, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          path: '/',
+          maxAge: 60 * 60 * 24 * 7, // 7 days in seconds
+        });
+      } catch (cookieErr: unknown) {
+        const message = cookieErr instanceof Error ? cookieErr.message : String(cookieErr);
+        console.error('[SessionRoute] Firebase createSessionCookie failed:', message);
+        // Phase 1 Problem C Fix: NEVER fall back to ID token as session cookie!
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Authentication failed: Could not issue genuine session cookie. Please retry.',
+          },
+          { status: 401 }
+        );
+      }
     }
 
+    const duration = Date.now() - startTime;
+    response.headers.set('Server-Timing', `session;dur=${duration}`);
     return response;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: message }, { status: 401 });
+    console.warn('[SessionRoute] Verification error:', message);
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 401 }
+    );
   }
 }
