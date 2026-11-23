@@ -11,12 +11,17 @@ interface DiagnosticResult {
   durationMs: number;
   environment: string;
   firebaseAdminInitialized: boolean;
-  projectId: string;
+  configuredProjectId: string;
+  actualProjectId: string;
+  databaseId: string;
+  projectMatch: boolean;
   clientEmailMasked: string;
   hasPrivateKey: boolean;
   authOperational: boolean;
   readTested: boolean;
   writeTested: boolean;
+  readBackTested: boolean;
+  deleteTested: boolean;
   databaseReachable: boolean;
   status: 'HEALTHY' | 'DEGRADED' | 'DOWN';
   failureCode?: string;
@@ -51,7 +56,11 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const projectId = process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'unconfigured';
+  const configuredProjectId = process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'unconfigured';
+  const actualProjectId = adminApp?.options?.projectId || (adminDb as unknown as { projectId?: string })?.projectId || configuredProjectId;
+  const databaseId = (adminDb as unknown as { databaseId?: string })?.databaseId || '(default)';
+  const projectMatch = Boolean(actualProjectId && configuredProjectId && actualProjectId === configuredProjectId);
+
   const rawEmail = process.env.FIREBASE_CLIENT_EMAIL || '';
   const emailDomain = rawEmail.includes('@') ? `@${rawEmail.split('@')[1]}` : 'not-set';
   const clientEmailMasked = rawEmail ? `service-account${emailDomain}` : 'missing';
@@ -63,12 +72,17 @@ export async function GET(req: NextRequest) {
     durationMs: 0,
     environment: process.env.NODE_ENV || 'development',
     firebaseAdminInitialized: Boolean(adminApp),
-    projectId,
+    configuredProjectId,
+    actualProjectId,
+    databaseId,
+    projectMatch,
     clientEmailMasked,
     hasPrivateKey,
     authOperational: false,
     readTested: false,
     writeTested: false,
+    readBackTested: false,
+    deleteTested: false,
     databaseReachable: false,
     status: 'DOWN',
   };
@@ -78,24 +92,24 @@ export async function GET(req: NextRequest) {
     if (adminAuth) {
       report.authOperational = true;
     }
-  } catch (authErr) {
+  } catch {
     report.failureCode = 'AUTH_INITIALIZATION_ERROR';
     report.sanitizedExplanation = 'Firebase Admin Auth failed to initialize.';
     report.durationMs = Date.now() - startTime;
     return NextResponse.json(report, { status: 500 });
   }
 
-  // 2. Test Firestore Read & Write Operations
+  // 2. Test Firestore Read & Write Operations against existing database
   const DIAGNOSTICS_COLLECTION = 'systemDiagnostics';
   const testDocId = `probe-${Date.now()}`;
+  const testDocRef = adminDb.collection(DIAGNOSTICS_COLLECTION).doc(testDocId);
 
   try {
-    // Probe 1: Read operation
+    // Probe 1: Genuine read operation on existing database (empty collection is healthy)
     await adminDb.collection(DIAGNOSTICS_COLLECTION).limit(1).get();
     report.readTested = true;
 
-    // Probe 2: Write & Delete operation
-    const testDocRef = adminDb.collection(DIAGNOSTICS_COLLECTION).doc(testDocId);
+    // Probe 2: Controlled temporary write
     await testDocRef.set({
       testId: testDocId,
       timestamp: new Date().toISOString(),
@@ -103,8 +117,13 @@ export async function GET(req: NextRequest) {
     });
     report.writeTested = true;
 
-    // Cleanup immediately
+    // Probe 3: Controlled read-back
+    const snap = await testDocRef.get();
+    report.readBackTested = Boolean(snap.exists && snap.data()?.testId === testDocId);
+
+    // Probe 4: Immediate cleanup
     await testDocRef.delete();
+    report.deleteTested = true;
 
     report.databaseReachable = true;
     report.status = 'HEALTHY';
@@ -112,9 +131,19 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(report, { status: 200 });
   } catch (err: unknown) {
-    const classified = classifyFirestoreError(err, projectId);
-    report.databaseReachable = false;
-    report.status = 'DOWN';
+    // Attempt best-effort cleanup of test document if write succeeded before error
+    if (report.writeTested && !report.deleteTested) {
+      try {
+        await testDocRef.delete();
+        report.deleteTested = true;
+      } catch {
+        // Ignore secondary delete failure
+      }
+    }
+
+    const classified = classifyFirestoreError(err, configuredProjectId);
+    report.databaseReachable = report.readTested;
+    report.status = report.readTested ? 'DEGRADED' : 'DOWN';
     report.failureCode = classified.code;
     report.sanitizedExplanation = classified.message;
     report.remediationGuide = classified.diagnosticHelp;

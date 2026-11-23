@@ -17,10 +17,16 @@
  */
 
 export type PersistenceErrorCode =
-  | 'FIRESTORE_NOT_CONFIGURED'
-  | 'FIRESTORE_API_DISABLED'
+  | 'PROJECT_ID_MISMATCH'
   | 'FIRESTORE_PERMISSION_DENIED'
+  | 'FIRESTORE_API_DISABLED'
+  | 'FIRESTORE_DATABASE_NOT_FOUND'
+  | 'FIREBASE_ADMIN_AUTH_FAILURE'
+  | 'INVALID_SERVICE_ACCOUNT'
   | 'FIRESTORE_UNAVAILABLE'
+  | 'FIRESTORE_TIMEOUT'
+  | 'FIRESTORE_CONFIGURATION_ERROR'
+  | 'FIRESTORE_NOT_CONFIGURED'
   | 'FIRESTORE_READ_ERROR'
   | 'FIRESTORE_WRITE_ERROR'
   | 'NOT_FOUND'
@@ -47,7 +53,8 @@ export class PersistenceError extends Error {
 
 /**
  * Classifies low-level Google Cloud / Firestore gRPC exceptions into typed PersistenceErrors
- * with clear developer remediation steps (e.g. disabled API, IAM permission denied, network unreachable).
+ * with clear developer remediation steps. Distinguishes accurately between API disabled,
+ * IAM permission denied, database not found, auth failures, timeouts, and project mismatches.
  */
 export function classifyFirestoreError(err: unknown, projectId?: string): PersistenceError {
   if (err instanceof PersistenceError) {
@@ -58,12 +65,41 @@ export function classifyFirestoreError(err: unknown, projectId?: string): Persis
   const message = errObj?.message || errObj?.details || String(err);
   const code = errObj?.code;
 
-  // gRPC Code 7: PERMISSION_DENIED
+  // 1. Project ID Mismatch
+  if (
+    message.includes('project id in credentials') ||
+    message.includes('does not match the project id requested') ||
+    message.includes('Project ID mismatch') ||
+    message.includes('project mismatch')
+  ) {
+    return new PersistenceError(
+      `Project ID mismatch: The configured project '${projectId || 'current'}' does not match the service account credentials.`,
+      'PROJECT_ID_MISMATCH',
+      err,
+      'Verify that FIREBASE_PROJECT_ID, NEXT_PUBLIC_FIREBASE_PROJECT_ID, and FIREBASE_CLIENT_EMAIL belong to the exact same Firebase project.'
+    );
+  }
+
+  // 2. Database Not Found (e.g. databaseId '(default)' not created in project)
+  if (
+    (code === 5 || code === '5' || message.includes('NOT_FOUND')) &&
+    (message.includes('database') || message.includes('Database') || message.includes('projects/'))
+  ) {
+    return new PersistenceError(
+      `Firestore database '(default)' was not found in project '${projectId || 'current'}'.`,
+      'FIRESTORE_DATABASE_NOT_FOUND',
+      err,
+      `Visit https://console.firebase.google.com/project/${projectId || 'current'}/firestore to create the (default) database in Native mode.`
+    );
+  }
+
+  // 3. gRPC Code 7: PERMISSION_DENIED / Disabled API
   if (code === 7 || code === '7' || message.includes('PERMISSION_DENIED')) {
     if (
       message.includes('Cloud Firestore API has not been used') ||
       message.includes('it is disabled') ||
-      message.includes('API has not been enabled')
+      message.includes('API has not been enabled') ||
+      message.includes('firestore.googleapis.com')
     ) {
       return new PersistenceError(
         `Cloud Firestore API is disabled or not initialized in project '${projectId || 'current'}'.`,
@@ -82,32 +118,75 @@ export function classifyFirestoreError(err: unknown, projectId?: string): Persis
     );
   }
 
-  // gRPC Code 14: UNAVAILABLE or Network Deadline Exceeded
+  // 4. Admin Auth Failure / Invalid Service Account
+  if (
+    message.includes('invalid_grant') ||
+    message.includes('Invalid JWT') ||
+    message.includes('auth/invalid-credential') ||
+    message.includes('Token refresh failed') ||
+    message.includes('Failed to determine service account')
+  ) {
+    return new PersistenceError(
+      'Firebase Admin authentication failed. Service account credentials or token exchange rejected.',
+      'FIREBASE_ADMIN_AUTH_FAILURE',
+      err,
+      'Verify that FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY are authentic and have not been rotated or revoked.'
+    );
+  }
+
+  if (
+    message.includes('Service account') &&
+    (message.includes('not found') || message.includes('deleted') || message.includes('disabled'))
+  ) {
+    return new PersistenceError(
+      `The configured service account was not found, disabled, or deleted in project '${projectId || 'current'}'.`,
+      'INVALID_SERVICE_ACCOUNT',
+      err,
+      'Generate a new private key for the service account in Firebase Console > Project Settings > Service Accounts.'
+    );
+  }
+
+  // 5. Timeout (gRPC Code 4: DEADLINE_EXCEEDED)
+  if (
+    code === 4 ||
+    code === '4' ||
+    message.includes('DEADLINE_EXCEEDED') ||
+    message.includes('ETIMEDOUT')
+  ) {
+    return new PersistenceError(
+      'Cloud Firestore operation timed out before receiving a response.',
+      'FIRESTORE_TIMEOUT',
+      err,
+      'Check database latency, active query limits, and outbound network throughput.'
+    );
+  }
+
+  // 6. gRPC Code 14: UNAVAILABLE or Network Failure
   if (
     code === 14 ||
     code === '14' ||
     message.includes('UNAVAILABLE') ||
-    message.includes('DEADLINE_EXCEEDED') ||
     message.includes('ECONNREFUSED') ||
-    message.includes('ETIMEDOUT')
+    message.includes('ENOTFOUND')
   ) {
     return new PersistenceError(
-      'Cloud Firestore service temporarily unreachable or connection timed out.',
+      'Cloud Firestore service temporarily unreachable or network connection refused.',
       'FIRESTORE_UNAVAILABLE',
       err,
-      'Check network connectivity or emulator status if running locally.'
+      'Check local network connectivity, DNS resolution, or emulator status if running locally.'
     );
   }
 
-  // Credentials / configuration missing
+  // 7. Credentials / Configuration Missing or Malformed
   if (
     message.includes('Could not load the default credentials') ||
     message.includes('credential') ||
-    message.includes('private key')
+    message.includes('private key') ||
+    message.includes('configuration')
   ) {
     return new PersistenceError(
       'Firebase Admin credentials missing, invalid, or improperly formatted.',
-      'FIRESTORE_NOT_CONFIGURED',
+      'FIRESTORE_CONFIGURATION_ERROR',
       err,
       'Verify FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY in .env.local or Render dashboard.'
     );

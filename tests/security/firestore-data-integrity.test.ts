@@ -425,6 +425,59 @@ describe('Firestore Data Integrity & orgId Regression Suite', () => {
       expect(err.code).toBe('FIRESTORE_UNAVAILABLE');
     });
 
+    it('classifies project mismatch as PROJECT_ID_MISMATCH', () => {
+      const mismatchError = {
+        message: 'The project id in credentials (other-project) does not match the project id requested (talentai-dba5f)',
+      };
+      const err = classifyFirestoreError(mismatchError, 'talentai-dba5f');
+      expect(err.code).toBe('PROJECT_ID_MISMATCH');
+      expect(err.diagnosticHelp).toContain('FIREBASE_PROJECT_ID');
+    });
+
+    it('classifies missing database as FIRESTORE_DATABASE_NOT_FOUND', () => {
+      const notFoundError = {
+        code: 5,
+        message: '5 NOT_FOUND: Database (default) was not found in project talentai-dba5f',
+      };
+      const err = classifyFirestoreError(notFoundError, 'talentai-dba5f');
+      expect(err.code).toBe('FIRESTORE_DATABASE_NOT_FOUND');
+      expect(err.diagnosticHelp).toContain('Native mode');
+    });
+
+    it('classifies invalid token/grant as FIREBASE_ADMIN_AUTH_FAILURE', () => {
+      const authError = {
+        message: 'invalid_grant: Invalid JWT Signature',
+      };
+      const err = classifyFirestoreError(authError, 'talentai-dba5f');
+      expect(err.code).toBe('FIREBASE_ADMIN_AUTH_FAILURE');
+      expect(err.diagnosticHelp).toContain('FIREBASE_PRIVATE_KEY');
+    });
+
+    it('classifies missing service account as INVALID_SERVICE_ACCOUNT', () => {
+      const saError = {
+        message: 'Service account firebase-adminsdk-fbsvc@talentai-dba5f.iam.gserviceaccount.com was deleted or disabled',
+      };
+      const err = classifyFirestoreError(saError, 'talentai-dba5f');
+      expect(err.code).toBe('INVALID_SERVICE_ACCOUNT');
+    });
+
+    it('classifies gRPC code 4 as FIRESTORE_TIMEOUT', () => {
+      const timeoutError = {
+        code: 4,
+        message: '4 DEADLINE_EXCEEDED: The deadline was reached before the request completed',
+      };
+      const err = classifyFirestoreError(timeoutError, 'talentai-dba5f');
+      expect(err.code).toBe('FIRESTORE_TIMEOUT');
+    });
+
+    it('classifies credential load failure as FIRESTORE_CONFIGURATION_ERROR', () => {
+      const configError = {
+        message: 'Could not load the default credentials or invalid private key',
+      };
+      const err = classifyFirestoreError(configError, 'talentai-dba5f');
+      expect(err.code).toBe('FIRESTORE_CONFIGURATION_ERROR');
+    });
+
     it('re-throws classified PersistenceError during UserRepository.getById when Firestore API is disabled', async () => {
       const disabledApiError = {
         code: 7,
