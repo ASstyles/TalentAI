@@ -16,6 +16,10 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Ensure the public directory exists in the builder stage,
+# even when the repository has no static assets.
+RUN mkdir -p /app/public
+
 # Build-time public arguments for client bundle baking
 ARG NEXT_PUBLIC_FIREBASE_API_KEY
 ARG NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
@@ -38,6 +42,12 @@ ENV NODE_ENV=production
 
 RUN npm run build
 
+# Validate standalone output and required copy sources exist
+RUN test -d /app/public && \
+    test -d /app/.next/standalone && \
+    test -f /app/.next/standalone/server.js && \
+    test -d /app/.next/static
+
 # Step 3: Production Runner Minimal Container
 FROM base AS runner
 WORKDIR /app
@@ -51,11 +61,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN groupadd --system --gid 1001 nodejs && \
     useradd --system --uid 1001 nextjs
 
-# Create public assets directory if not present
-RUN mkdir -p public
-
 # Copy standalone build output & static assets
-COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
