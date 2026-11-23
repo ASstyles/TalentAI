@@ -4,56 +4,11 @@ import { adminStorage, adminDb } from '@/lib/firebase/admin';
 import { parseResumeWithGemini } from '@/lib/gemini/services/resume-analysis';
 import { GeminiClient } from '@/lib/gemini/client';
 import { rateLimiter } from '@/lib/rate-limit/redis-limiter';
-
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB max
-
-// Magic bytes validation to prevent MIME spoofing
-function validateFileHeader(buffer: Buffer, extension: string): boolean {
-  if (extension === 'pdf') {
-    // %PDF- header: 0x25, 0x50, 0x44, 0x46, 0x2D
-    return (
-      buffer.length >= 5 &&
-      buffer[0] === 0x25 &&
-      buffer[1] === 0x50 &&
-      buffer[2] === 0x44 &&
-      buffer[3] === 0x46 &&
-      buffer[4] === 0x2d
-    );
-  }
-
-  if (extension === 'docx') {
-    // DOCX is a zip archive: starts with PK\x03\x04
-    return (
-      buffer.length >= 4 &&
-      buffer[0] === 0x50 &&
-      buffer[1] === 0x4b &&
-      buffer[2] === 0x03 &&
-      buffer[3] === 0x04
-    );
-  }
-
-  if (extension === 'txt') {
-    // Check for printable text characters
-    for (let i = 0; i < Math.min(buffer.length, 512); i++) {
-      const byte = buffer[i];
-      if (byte === 0) return false; // Null byte indicates binary file
-    }
-    return true;
-  }
-
-  return false;
-}
-
-function extractTextFromBuffer(buffer: Buffer, extension: string): string {
-  if (extension === 'txt') {
-    return buffer.toString('utf-8');
-  }
-
-  // Fallback string extraction from binary streams (extracts printable ASCII/UTF-8 strings)
-  const raw = buffer.toString('latin1');
-  const extracted = raw.replace(/[^\x20-\x7E\t\r\n]/g, ' ').replace(/\s+/g, ' ');
-  return extracted.trim();
-}
+import {
+  validateFileHeader,
+  extractDocumentText,
+  MAX_RESUME_FILE_SIZE,
+} from '@/lib/resume/parser';
 
 export async function POST(req: NextRequest) {
   try {
@@ -77,7 +32,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Size limit check
-    if (file.size > MAX_FILE_SIZE) {
+    if (file.size > MAX_RESUME_FILE_SIZE) {
       return NextResponse.json(
         { error: `File size exceeds 10MB limit (provided ${Math.round(file.size / 1024 / 1024)}MB)` },
         { status: 400 }
@@ -128,8 +83,8 @@ export async function POST(req: NextRequest) {
       uploadWarning = 'Cloud storage bucket offline or mock emulator mode';
     }
 
-    // Extract text content
-    const extractedText = extractTextFromBuffer(buffer, ext);
+    // Extract text content with pdf-parse and mammoth engine
+    const extractedText = await extractDocumentText(buffer, ext);
 
     let parsedData = null;
     if (autoParse && extractedText.length > 20) {

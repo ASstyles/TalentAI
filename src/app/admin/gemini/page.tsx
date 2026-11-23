@@ -50,7 +50,7 @@ export default function AdminGeminiPage() {
           </div>
           <h1 className="text-2xl font-bold text-white">Gemini AI Model Configuration & Live Diagnostics</h1>
           <p className="mt-1 text-sm text-slate-400">
-            Centrally configured model tiers: Primary (Neon), Reasoning (Carbon), Fast (Hydrogen), and Universal Fallback.
+            Centrally configured model tiers: Primary (Flash), Reasoning (Pro), Fast (2.0 Flash), and Universal Fallback.
           </p>
         </div>
         <button
@@ -74,34 +74,34 @@ export default function AdminGeminiPage() {
       <div className="grid gap-4 sm:grid-cols-4">
         <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-cyan-400">Primary Tier</span>
-          <h3 className="text-base font-bold text-white">gemini-4-neon</h3>
+          <h3 className="text-base font-bold text-white">gemini-2.5-flash</h3>
           <p className="text-xs text-slate-400">
-            Primary production model tier for general assessment and role synthesis.
+            Primary production model tier for general assessment, role synthesis, and candidate evaluations.
           </p>
           <div className="pt-2 text-[10px] font-mono text-slate-500">ENV: GEMINI_MODEL_PRIMARY</div>
         </div>
 
         <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-indigo-400">Reasoning Tier</span>
-          <h3 className="text-base font-bold text-white">gemini-4-carbon</h3>
+          <h3 className="text-base font-bold text-white">gemini-2.5-pro</h3>
           <p className="text-xs text-slate-400">
-            Deep resume parsing, project architecture extraction, and hiring dossier synthesis.
+            Deep resume parsing, complex project architecture extraction, and hiring dossier synthesis.
           </p>
           <div className="pt-2 text-[10px] font-mono text-slate-500">ENV: GEMINI_MODEL_REASONING</div>
         </div>
 
         <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-blue-400">Fast Tier</span>
-          <h3 className="text-base font-bold text-white">gemini-4-hydrogen</h3>
+          <h3 className="text-base font-bold text-white">gemini-2.0-flash</h3>
           <p className="text-xs text-slate-400">
-            Real-time turn-by-turn interview evaluation and instant rubric scoring.
+            Real-time turn-by-turn interview evaluation and low-latency rubric scoring.
           </p>
           <div className="pt-2 text-[10px] font-mono text-slate-500">ENV: GEMINI_MODEL_FAST</div>
         </div>
 
         <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">Universal Fallback</span>
-          <h3 className="text-base font-bold text-white">gemini-3.8-flash</h3>
+          <h3 className="text-base font-bold text-white">gemini-1.5-flash</h3>
           <p className="text-xs text-slate-400">
             Automatic failover for rate-limits, quota throttling, or transient connectivity spikes.
           </p>
